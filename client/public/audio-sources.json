@@ -1,0 +1,32 @@
+{
+  "voice": "en-US-AnaNeural",
+  "words": {
+    "apple": "Wikimedia Commons (En-us-apple.ogg)",
+    "ball": "Wikimedia Commons (En-us-ball.ogg)",
+    "cat": "Wikimedia Commons (En-us-cat.ogg)",
+    "dog": "Wikimedia Commons (En-us-dog.ogg)",
+    "egg": "Wikimedia Commons (En-us-egg.ogg)",
+    "fish": "Wikimedia Commons (En-us-fish.ogg)",
+    "goat": "Wikimedia Commons (En-us-goat.ogg)",
+    "hat": "Wikimedia Commons (En-us-hat.ogg)",
+    "ice": "Wikimedia Commons (En-us-ice.ogg)",
+    "juice": "Wikimedia Commons (En-us-juice.ogg)",
+    "kite": "Wikimedia Commons (En-us-kite.ogg)",
+    "lion": "Wikimedia Commons (En-us-lion.ogg)",
+    "moon": "Wikimedia Commons (En-us-moon.ogg)",
+    "nose": "Wikimedia Commons (En-us-nose.ogg)",
+    "orange": "Wikimedia Commons (En-Orange.ogg)",
+    "pig": "Wikimedia Commons (En-us-pig.ogg)",
+    "queen": "Wikimedia Commons (En-us-queen.ogg)",
+    "rabbit": "Wikimedia Commons (En-us-rabbit.ogg)",
+    "sun": "Wikimedia Commons (En-us-sun.ogg)",
+    "tree": "Wikimedia Commons (En-us-tree.ogg)",
+    "umbrella": "Wikimedia Commons (En-us-umbrella.ogg)",
+    "van": "Wikimedia Commons (En-us-van.ogg)",
+    "water": "Wikimedia Commons (En-us-water.ogg)",
+    "box": "Wikimedia Commons (En-us-box.ogg)",
+    "yellow": "Wikimedia Commons (En-us-yellow.ogg)",
+    "zebra": "Wikimedia Commons (En-us-zebra.ogg)"
+  },
+  "notes": "Letters and sentences: Microsoft Edge neural TTS (en-US-AnaNeural). Words: real human recordings from Wikimedia Commons where available (CC licenses), otherwise neural TTS. See audio-sources.json."
+}
