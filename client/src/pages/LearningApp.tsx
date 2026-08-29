@@ -29,8 +29,9 @@ import {
   X,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { withBase } from "@/lib/base";
 import { getEmbeddedAudioCue, type AudioCue } from "@/lib/embeddedAudio";
-import { useLocation } from "wouter";
+import { Link, useLocation } from "wouter";
 
 type Mode = "letters" | "sentences";
 type SentenceCategory = "الكل" | "التحية" | "اللباقة" | "البيت" | "المشاعر" | "اللعب" | "التعلّم";
@@ -155,11 +156,11 @@ const sentences: SentenceLesson[] = [
 ];
 
 const categories: SentenceCategory[] = ["الكل", "التحية", "اللباقة", "البيت", "المشاعر", "اللعب", "التعلّم"];
-const heroImage = "/img/hero-paper.jpg";
-const lettersImage = "/img/letters-paper.jpg";
-const sentencesImage = "/img/sentences-paper.jpg";
-const mascotImage = "/img/mascot-logo.png";
-const logoImage = "/img/mascot-logo.png";
+const heroImage = withBase("/img/hero-paper.jpg");
+const lettersImage = withBase("/img/letters-paper.jpg");
+const sentencesImage = withBase("/img/sentences-paper.jpg");
+const mascotImage = withBase("/img/mascot-logo.png");
+const logoImage = withBase("/img/mascot-logo.png");
 const sentencePuzzles = [
   { arabic: "صباح الخير.", words: ["Good", "morning."], sentenceIndex: 1 },
   { arabic: "كيف حالك؟", words: ["How", "are", "you?"], sentenceIndex: 3 },
@@ -672,13 +673,13 @@ export default function LearningApp({ page }: { page: LearningPage }) {
       <div className="paper-speckle" aria-hidden="true" />
       {celebrationKey > 0 && <div className={cn("celebration-burst", `theme-${celebrationTheme}`)} key={celebrationKey} aria-hidden="true"><span className="celebration-halo" /><span className="reward-pop"><small>{celebrationAmount > 0 ? "نجوم جديدة" : "إجابة صحيحة"}</small>{celebrationAmount > 0 ? `+${celebrationAmount} ★` : "أحسنت!"}</span><span className="celebration-cheer">برافو!</span>{celebrationTheme === "listen" && <><span className="listen-wave wave-one" /><span className="listen-wave wave-two" /><span className="listen-comet-icon">✦</span></>}{celebrationTheme === "match" && <><span className="match-door left" /><span className="match-door right" /><span className="match-ticket-fly">{letters[matchTargetIndex].word}</span></>}{celebrationTheme === "sentence" && <span className="sentence-ribbon-fly">Great sentence!</span>}{Array.from({ length: 3 }).map((_, index) => <b className="star-flight" key={`flight-${index}`}>★</b>)}{Array.from({ length: 24 }).map((_, index) => <i key={index} />)}</div>}
       <header className="topbar container">
-        <a className="brand" href="/" aria-label="English Kids Quest">
+        <Link className="brand" href="/" aria-label="English Kids Quest">
           <span className="brand-mark"><img src={logoImage} alt="" /><span className="brand-soundlines" aria-hidden="true"><i /><i /><i /></span></span>
           <span className="brand-copy">
             <strong>English Kids Quest</strong>
             <small>نتعلّمها باللعب</small>
           </span>
-        </a>
+        </Link>
 
         <nav className={cn("topnav", mobileMenuOpen && "is-open")} aria-label="التنقل الرئيسي">
           <button className={cn(page === "letters" && "active")} onClick={() => { setMobileMenuOpen(false); setLocation("/letters"); }}>
@@ -775,7 +776,7 @@ export default function LearningApp({ page }: { page: LearningPage }) {
                 <article><span className="progress-stat-icon sentences"><ListChecks size={19} /></span><div><b>{completedSentences.size}<small>/ {sentences.length}</small></b><span>جمل تدربت عليها</span></div></article>
                 <article><span className="progress-stat-icon games"><Trophy size={19} /></span><div><b>{gameWins}</b><span>جولات أنهيتها</span></div></article>
               </div>
-              <a className="progress-next-step" href={nextStep.href}><span className="progress-next-icon"><Sparkles size={18} /></span><span><small>{nextStep.label}</small><b lang={nextStep.href === "/sentences" ? "en" : undefined}>{nextStep.title}</b><em>{nextStep.detail}</em></span><ArrowLeft size={19} /></a>
+              <Link className="progress-next-step" href={nextStep.href}><span className="progress-next-icon"><Sparkles size={18} /></span><span><small>{nextStep.label}</small><b lang={nextStep.href === "/sentences" ? "en" : undefined}>{nextStep.title}</b><em>{nextStep.detail}</em></span><ArrowLeft size={19} /></Link>
             </section>}
 
             {(page === "letters" || page === "sentences") && (mode === "letters" ? (
