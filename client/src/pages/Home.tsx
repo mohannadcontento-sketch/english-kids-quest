@@ -1,8 +1,8 @@
 /* Design reminder — “حكاية الورق الملوّن”: a focused storybook entry page, not a dashboard. */
 import { ArrowLeft, BookOpen, Gamepad2, Leaf, ListChecks, Sparkles, Star, Trophy } from "lucide-react";
 
-const heroImage = "/manus-storage/ekq-hero-paper_4e4c8bc5.jpg";
-const logoImage = "/manus-storage/ekq-logo-paper_aa515140.png";
+const heroImage = "/img/hero-paper.jpg";
+const logoImage = "/img/mascot-logo.png";
 
 export default function Home() {
   return <div className="quest-app landing-app" dir="rtl">

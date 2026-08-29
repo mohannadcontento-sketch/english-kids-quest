@@ -155,11 +155,11 @@ const sentences: SentenceLesson[] = [
 ];
 
 const categories: SentenceCategory[] = ["الكل", "التحية", "اللباقة", "البيت", "المشاعر", "اللعب", "التعلّم"];
-const heroImage = "/manus-storage/ekq-hero-paper_4e4c8bc5.jpg";
-const lettersImage = "/manus-storage/ekq-letters-paper_058e5971.jpg";
-const sentencesImage = "/manus-storage/ekq-sentences-paper_b1734710.jpg";
-const mascotImage = "/manus-storage/ekq-logo-paper_aa515140.png";
-const logoImage = "/manus-storage/ekq-logo-paper_aa515140.png";
+const heroImage = "/img/hero-paper.jpg";
+const lettersImage = "/img/letters-paper.jpg";
+const sentencesImage = "/img/sentences-paper.jpg";
+const mascotImage = "/img/mascot-logo.png";
+const logoImage = "/img/mascot-logo.png";
 const sentencePuzzles = [
   { arabic: "صباح الخير.", words: ["Good", "morning."], sentenceIndex: 1 },
   { arabic: "كيف حالك؟", words: ["How", "are", "you?"], sentenceIndex: 3 },
@@ -272,7 +272,6 @@ export default function LearningApp({ page }: { page: LearningPage }) {
   const [hasHeardModel, setHasHeardModel] = useState(false);
   const [sentencePractice, setSentencePractice] = useState({ id: null as number | null, phase: "ready" as PronunciationPhase, heard: "", match: null as number | null, feedback: "", attempts: 0, hasHeardModel: false });
   const audioRef = useRef<HTMLAudioElement | null>(null);
-  const audioFrameRef = useRef<number | null>(null);
   const recognitionRef = useRef<SpeechRecognitionLike | null>(null);
 
   const activeLetter = letters[activeLetterIndex];
@@ -332,7 +331,6 @@ export default function LearningApp({ page }: { page: LearningPage }) {
   useEffect(() => () => {
     audioRef.current?.pause();
     recognitionRef.current?.abort();
-    if (audioFrameRef.current !== null) window.cancelAnimationFrame(audioFrameRef.current);
   }, []);
 
   useEffect(() => {
@@ -343,7 +341,6 @@ export default function LearningApp({ page }: { page: LearningPage }) {
   const playEmbeddedAudio = (cue: AudioCue | null) => {
     setSpeechNotice("");
     audioRef.current?.pause();
-    if (audioFrameRef.current !== null) window.cancelAnimationFrame(audioFrameRef.current);
     if (navigator.vibrate) navigator.vibrate(8);
     if (!cue) {
       setSpeechNotice("ملف الصوت لهذا الدرس غير متاح حاليًا.");
@@ -355,29 +352,19 @@ export default function LearningApp({ page }: { page: LearningPage }) {
     audio.volume = 1;
     audioRef.current = audio;
     const stop = () => {
-      if (audioFrameRef.current !== null) window.cancelAnimationFrame(audioFrameRef.current);
       audio.pause();
       setIsSpeaking(false);
       setSpeechNotice("");
     };
-    const monitor = () => {
-      if (audio.currentTime >= cue.end || audio.ended) {
-        stop();
-        return;
-      }
-      audioFrameRef.current = window.requestAnimationFrame(monitor);
-    };
     audio.onplay = () => {
       setIsSpeaking(true);
       setSpeechNotice("جاري النطق بالإنجليزية...");
-      audioFrameRef.current = window.requestAnimationFrame(monitor);
     };
     audio.onended = stop;
     audio.onerror = () => {
       setIsSpeaking(false);
       setSpeechNotice("تعذر تشغيل ملف الصوت. أعد تحميل الصفحة ثم حاول مرة أخرى.");
     };
-    audio.currentTime = cue.start;
     audio.play().catch(() => {
       setIsSpeaking(false);
       setSpeechNotice("تعذر بدء الصوت. اضغط زر الاستماع مرة أخرى.");
