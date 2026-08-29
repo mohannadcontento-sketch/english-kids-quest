@@ -29,7 +29,7 @@ import {
   X,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { withBase } from "@/lib/base";
+import { withBase, withAssetV } from "@/lib/base";
 import { getEmbeddedAudioCue, type AudioCue } from "@/lib/embeddedAudio";
 import { Link, useLocation } from "wouter";
 
@@ -156,11 +156,11 @@ const sentences: SentenceLesson[] = [
 ];
 
 const categories: SentenceCategory[] = ["الكل", "التحية", "اللباقة", "البيت", "المشاعر", "اللعب", "التعلّم"];
-const heroImage = withBase("/img/hero-paper.jpg");
-const lettersImage = withBase("/img/letters-paper.jpg");
-const sentencesImage = withBase("/img/sentences-paper.jpg");
-const mascotImage = withBase("/img/mascot-logo.png");
-const logoImage = withBase("/img/mascot-logo.png");
+const heroImage = withBase(withAssetV("/img/hero-paper.jpg"));
+const lettersImage = withBase(withAssetV("/img/letters-paper.jpg"));
+const sentencesImage = withBase(withAssetV("/img/sentences-paper.jpg"));
+const mascotImage = withBase(withAssetV("/img/mascot-logo.png"));
+const logoImage = withBase(withAssetV("/img/mascot-logo.png"));
 const sentencePuzzles = [
   { arabic: "صباح الخير.", words: ["Good", "morning."], sentenceIndex: 1 },
   { arabic: "كيف حالك؟", words: ["How", "are", "you?"], sentenceIndex: 3 },
