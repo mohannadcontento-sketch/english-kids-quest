@@ -1,5 +1,10 @@
 {
-  "voice": "en-US-AnaNeural",
+  "letters": {
+    "source": "FreeReading — Most common letter sounds (audio clips)",
+    "url": "https://www.freereading.net/wiki/Most_common_letter_sounds_(audio_clips).html",
+    "license": "CC BY-SA 3.0",
+    "note": "Real human recordings of the phonics sound of each letter a-z. The phoneme segment was extracted from each 'sound + example word' clip, silence-trimmed and loudness-normalized."
+  },
   "words": {
     "apple": "Wikimedia Commons (En-us-apple.ogg)",
     "ball": "Wikimedia Commons (En-us-ball.ogg)",
@@ -28,5 +33,7 @@
     "yellow": "Wikimedia Commons (En-us-yellow.ogg)",
     "zebra": "Wikimedia Commons (En-us-zebra.ogg)"
   },
-  "notes": "Letters and sentences: Microsoft Edge neural TTS (en-US-AnaNeural). Words: real human recordings from Wikimedia Commons where available (CC licenses), otherwise neural TTS. See audio-sources.json."
+  "sentences": "Microsoft Edge neural TTS (en-US-AnaNeural, rate -10%)",
+  "loudness": "All clips normalized to -16 LUFS (true peak -1.5 dB) for consistent, clear playback",
+  "notes": "Letter sounds and words are real human recordings (FreeReading CC BY-SA 3.0 / Wikimedia Commons). Sentences use the AnaNeural child voice. No AI audio is used for letters or words."
 }
