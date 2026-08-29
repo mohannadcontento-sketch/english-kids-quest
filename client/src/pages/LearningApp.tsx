@@ -74,32 +74,32 @@ type SentenceLesson = {
 };
 
 const letters: LetterLesson[] = [
-  { letter: "A", lower: "a", sound: "ay", ipa: "/eɪ/", word: "apple", wordAr: "تفاحة", hint: "إي" },
-  { letter: "B", lower: "b", sound: "bee", ipa: "/biː/", word: "ball", wordAr: "كرة", hint: "بي" },
-  { letter: "C", lower: "c", sound: "see", ipa: "/siː/", word: "cat", wordAr: "قطة", hint: "سي" },
-  { letter: "D", lower: "d", sound: "dee", ipa: "/diː/", word: "dog", wordAr: "كلب", hint: "دي" },
-  { letter: "E", lower: "e", sound: "ee", ipa: "/iː/", word: "egg", wordAr: "بيضة", hint: "إي طويلة" },
-  { letter: "F", lower: "f", sound: "ef", ipa: "/ɛf/", word: "fish", wordAr: "سمكة", hint: "إف" },
-  { letter: "G", lower: "g", sound: "gee", ipa: "/dʒiː/", word: "goat", wordAr: "ماعز", hint: "جي" },
-  { letter: "H", lower: "h", sound: "aitch", ipa: "/eɪtʃ/", word: "hat", wordAr: "قبعة", hint: "إيتش" },
-  { letter: "I", lower: "i", sound: "eye", ipa: "/aɪ/", word: "ice", wordAr: "ثلج", hint: "آي" },
-  { letter: "J", lower: "j", sound: "jay", ipa: "/dʒeɪ/", word: "juice", wordAr: "عصير", hint: "جاي" },
-  { letter: "K", lower: "k", sound: "kay", ipa: "/keɪ/", word: "kite", wordAr: "طائرة ورقية", hint: "كاي" },
-  { letter: "L", lower: "l", sound: "el", ipa: "/ɛl/", word: "lion", wordAr: "أسد", hint: "إل" },
-  { letter: "M", lower: "m", sound: "em", ipa: "/ɛm/", word: "moon", wordAr: "قمر", hint: "إم" },
-  { letter: "N", lower: "n", sound: "en", ipa: "/ɛn/", word: "nose", wordAr: "أنف", hint: "إن" },
-  { letter: "O", lower: "o", sound: "oh", ipa: "/oʊ/", word: "orange", wordAr: "برتقالة", hint: "أو" },
-  { letter: "P", lower: "p", sound: "pee", ipa: "/piː/", word: "pig", wordAr: "خنزير", hint: "بي" },
-  { letter: "Q", lower: "q", sound: "cue", ipa: "/kjuː/", word: "queen", wordAr: "ملكة", hint: "كيو" },
-  { letter: "R", lower: "r", sound: "ar", ipa: "/ɑːr/", word: "rabbit", wordAr: "أرنب", hint: "آر" },
-  { letter: "S", lower: "s", sound: "ess", ipa: "/ɛs/", word: "sun", wordAr: "شمس", hint: "إس" },
-  { letter: "T", lower: "t", sound: "tee", ipa: "/tiː/", word: "tree", wordAr: "شجرة", hint: "تي" },
-  { letter: "U", lower: "u", sound: "you", ipa: "/juː/", word: "umbrella", wordAr: "مظلة", hint: "يو" },
-  { letter: "V", lower: "v", sound: "vee", ipa: "/viː/", word: "van", wordAr: "شاحنة", hint: "في" },
-  { letter: "W", lower: "w", sound: "double-u", ipa: "/ˈdʌbəljuː/", word: "water", wordAr: "ماء", hint: "دَبْل يو" },
-  { letter: "X", lower: "x", sound: "ex", ipa: "/ɛks/", word: "box", wordAr: "صندوق", hint: "إكس" },
-  { letter: "Y", lower: "y", sound: "why", ipa: "/waɪ/", word: "yellow", wordAr: "أصفر", hint: "واي" },
-  { letter: "Z", lower: "z", sound: "zee", ipa: "/ziː/", word: "zebra", wordAr: "حمار وحشي", hint: "زي" },
+  { letter: "A", lower: "a", sound: "aah", ipa: "/æ/", word: "apple", wordAr: "تفاحة", hint: "آه" },
+  { letter: "B", lower: "b", sound: "buh", ipa: "/b/", word: "ball", wordAr: "كرة", hint: "بُه" },
+  { letter: "C", lower: "c", sound: "kuh", ipa: "/k/", word: "cat", wordAr: "قطة", hint: "كُه" },
+  { letter: "D", lower: "d", sound: "duh", ipa: "/d/", word: "dog", wordAr: "كلب", hint: "دُه" },
+  { letter: "E", lower: "e", sound: "eh", ipa: "/e/", word: "egg", wordAr: "بيضة", hint: "إِه" },
+  { letter: "F", lower: "f", sound: "fuh", ipa: "/f/", word: "fish", wordAr: "سمكة", hint: "فُه" },
+  { letter: "G", lower: "g", sound: "guh", ipa: "/ɡ/", word: "goat", wordAr: "ماعز", hint: "گُه" },
+  { letter: "H", lower: "h", sound: "huh", ipa: "/h/", word: "hat", wordAr: "قبعة", hint: "هُه" },
+  { letter: "I", lower: "i", sound: "ih", ipa: "/ɪ/", word: "ice", wordAr: "ثلج", hint: "إِيه قصيرة" },
+  { letter: "J", lower: "j", sound: "juh", ipa: "/dʒ/", word: "juice", wordAr: "عصير", hint: "جُه" },
+  { letter: "K", lower: "k", sound: "kuh", ipa: "/k/", word: "kite", wordAr: "طائرة ورقية", hint: "كُه" },
+  { letter: "L", lower: "l", sound: "luh", ipa: "/l/", word: "lion", wordAr: "أسد", hint: "لُه" },
+  { letter: "M", lower: "m", sound: "muh", ipa: "/m/", word: "moon", wordAr: "قمر", hint: "مُه" },
+  { letter: "N", lower: "n", sound: "nuh", ipa: "/n/", word: "nose", wordAr: "أنف", hint: "نُه" },
+  { letter: "O", lower: "o", sound: "awe", ipa: "/ɒ/", word: "orange", wordAr: "برتقالة", hint: "أُه" },
+  { letter: "P", lower: "p", sound: "puh", ipa: "/p/", word: "pig", wordAr: "خنزير", hint: "پُه" },
+  { letter: "Q", lower: "q", sound: "kwuh", ipa: "/kw/", word: "queen", wordAr: "ملكة", hint: "كْوُه" },
+  { letter: "R", lower: "r", sound: "ruh", ipa: "/r/", word: "rabbit", wordAr: "أرنب", hint: "رُه" },
+  { letter: "S", lower: "s", sound: "suh", ipa: "/s/", word: "sun", wordAr: "شمس", hint: "سُه" },
+  { letter: "T", lower: "t", sound: "tuh", ipa: "/t/", word: "tree", wordAr: "شجرة", hint: "تُه" },
+  { letter: "U", lower: "u", sound: "uh", ipa: "/ʌ/", word: "umbrella", wordAr: "مظلة", hint: "أَه" },
+  { letter: "V", lower: "v", sound: "vuh", ipa: "/v/", word: "van", wordAr: "شاحنة", hint: "ڤُه" },
+  { letter: "W", lower: "w", sound: "wuh", ipa: "/w/", word: "water", wordAr: "ماء", hint: "وُه" },
+  { letter: "X", lower: "x", sound: "ks", ipa: "/ks/", word: "box", wordAr: "صندوق", hint: "كْس" },
+  { letter: "Y", lower: "y", sound: "yuh", ipa: "/j/", word: "yellow", wordAr: "أصفر", hint: "يُه" },
+  { letter: "Z", lower: "z", sound: "zuh", ipa: "/z/", word: "zebra", wordAr: "حمار وحشي", hint: "زُه" },
 ];
 
 const sentences: SentenceLesson[] = [
@@ -274,6 +274,9 @@ export default function LearningApp({ page }: { page: LearningPage }) {
   const [sentencePractice, setSentencePractice] = useState({ id: null as number | null, phase: "ready" as PronunciationPhase, heard: "", match: null as number | null, feedback: "", attempts: 0, hasHeardModel: false });
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const recognitionRef = useRef<SpeechRecognitionLike | null>(null);
+  const recorderRef = useRef<MediaRecorder | null>(null);
+  const recordingUrlRef = useRef<string | null>(null);
+  const [lastRecordingUrl, setLastRecordingUrl] = useState<string | null>(null);
 
   const activeLetter = letters[activeLetterIndex];
   const filteredSentences = useMemo(() => {
@@ -468,6 +471,44 @@ export default function LearningApp({ page }: { page: LearningPage }) {
     playEmbeddedAudio(getEmbeddedAudioCue("word", activeLetterIndex));
   };
 
+  const startVoiceRecording = () => {
+    try {
+      if (!navigator.mediaDevices?.getUserMedia || typeof MediaRecorder === "undefined") return;
+      navigator.mediaDevices.getUserMedia({ audio: true }).then((stream) => {
+        const chunks: Blob[] = [];
+        const recorder = new MediaRecorder(stream);
+        recorder.ondataavailable = (event) => { if (event.data.size > 0) chunks.push(event.data); };
+        recorder.onstop = () => {
+          stream.getTracks().forEach((track) => track.stop());
+          if (chunks.length === 0) return;
+          const blob = new Blob(chunks, { type: recorder.mimeType || "audio/webm" });
+          if (recordingUrlRef.current) URL.revokeObjectURL(recordingUrlRef.current);
+          const url = URL.createObjectURL(blob);
+          recordingUrlRef.current = url;
+          setLastRecordingUrl(url);
+        };
+        recorderRef.current = recorder;
+        recorder.start();
+      }).catch(() => undefined);
+    } catch {
+      // Recording is optional; evaluation via speech recognition still works without it.
+    }
+  };
+
+  const stopVoiceRecording = () => {
+    const recorder = recorderRef.current;
+    if (recorder && recorder.state === "recording") recorder.stop();
+    recorderRef.current = null;
+  };
+
+  const playChildRecording = () => {
+    if (!lastRecordingUrl) return;
+    audioRef.current?.pause();
+    const audio = new Audio(lastRecordingUrl);
+    audioRef.current = audio;
+    audio.play().catch(() => undefined);
+  };
+
   const showPronunciationRetry = (message: string) => {
     const nextAttempt = pronunciationAttempts + 1;
     setPronunciationAttempts(nextAttempt);
@@ -491,6 +532,7 @@ export default function LearningApp({ page }: { page: LearningPage }) {
     recognition.continuous = false;
     recognition.maxAlternatives = 5;
     recognitionRef.current = recognition;
+    startVoiceRecording();
     recognition.onstart = () => {
       setIsChildSpeaking(true);
       setPronunciationPhase("listening");
@@ -507,6 +549,7 @@ export default function LearningApp({ page }: { page: LearningPage }) {
         return;
       }
       const expected = activeLetter.word;
+      stopVoiceRecording();
       const match = Math.max(...candidates.map((candidate) => wordSimilarity(candidate, expected)), 0);
       setPronunciationHeard(transcript);
       setPronunciationMatch(match);
@@ -520,6 +563,7 @@ export default function LearningApp({ page }: { page: LearningPage }) {
       }
     };
     recognition.onerror = (event) => {
+      stopVoiceRecording();
       if (event.error === "not-allowed") {
         setPronunciationPhase("unavailable");
         setPronunciationFeedback("اسمح للميكروفون من إعدادات المتصفح ثم جرّب.");
@@ -529,7 +573,10 @@ export default function LearningApp({ page }: { page: LearningPage }) {
         showPronunciationRetry("تعذر التقاط الكلمة الآن.");
       }
     };
-    recognition.onend = () => setIsChildSpeaking(false);
+    recognition.onend = () => {
+      setIsChildSpeaking(false);
+      stopVoiceRecording();
+    };
     try {
       recognition.start();
     } catch {
@@ -559,6 +606,7 @@ export default function LearningApp({ page }: { page: LearningPage }) {
     recognition.continuous = false;
     recognition.maxAlternatives = 5;
     recognitionRef.current = recognition;
+    startVoiceRecording();
     recognition.onstart = () => {
       setIsChildSpeaking(true);
       updateSentencePractice(sentence.id, { phase: "listening", feedback: "قل الجملة بهدوء… نحن نستمع.", heard: "", match: null });
@@ -572,6 +620,7 @@ export default function LearningApp({ page }: { page: LearningPage }) {
         return;
       }
       finished = true;
+      stopVoiceRecording();
       const match = Math.max(...candidates.map((candidate) => sentenceSimilarity(candidate, sentence.english)), 0);
       if (match >= 0.76) {
         setCompletedSentences((current) => new Set(current).add(sentence.id));
@@ -585,11 +634,13 @@ export default function LearningApp({ page }: { page: LearningPage }) {
     };
     recognition.onerror = (event) => {
       finished = true;
+      stopVoiceRecording();
       const message = event.error === "not-allowed" ? "اسمح للميكروفون من إعدادات المتصفح ثم جرّب." : event.error === "no-speech" ? "لم نسمع جملة. جرّب في مكان أهدأ." : "تعذر التقاط الجملة الآن. حاول مرة أخرى.";
       updateSentencePractice(sentence.id, { phase: event.error === "not-allowed" ? "unavailable" : "retry", feedback: message });
     };
     recognition.onend = () => {
       setIsChildSpeaking(false);
+      stopVoiceRecording();
       if (!finished) updateSentencePractice(sentence.id, { phase: "retry", feedback: "لم تكتمل الجملة. جرّب مرة أخرى ببطء." });
     };
     try {
@@ -799,11 +850,11 @@ export default function LearningApp({ page }: { page: LearningPage }) {
                     <div className="paper-star star-b"><Star size={11} fill="currentColor" /></div>
                   </div>
                   <div className="letter-detail">
-                    <div className="detail-label"><span>اسم الحرف</span><span className="ipa-chip">{activeLetter.ipa}</span></div>
+                    <div className="detail-label"><span>صوت الحرف (فونيكس)</span><span className="ipa-chip">{activeLetter.ipa}</span></div>
                     <h3>{activeLetter.letter} <span>مثل</span> <strong>{activeLetter.word}</strong></h3>
                     <p className="word-translation">{activeLetter.wordAr} <span>·</span> النطق التقريبي: <b>{activeLetter.hint}</b></p>
                     <div className="sound-actions">
-                      <button className={cn("sound-button", isSpeaking && "speaking")} onClick={() => playEmbeddedAudio(getEmbeddedAudioCue("letter", activeLetterIndex))}><Volume2 size={19} /> اسمع الحرف <span>{activeLetter.sound}</span></button>
+                      <button className={cn("sound-button", isSpeaking && "speaking")} onClick={() => playEmbeddedAudio(getEmbeddedAudioCue("letter", activeLetterIndex))}><Volume2 size={19} /> اسمع صوت الحرف <span>{activeLetter.sound}</span></button>
                       <button className="word-sound" onClick={() => playEmbeddedAudio(getEmbeddedAudioCue("word", activeLetterIndex))}><Headphones size={17} /> اسمع الكلمة</button>
                     </div>
                     <div className="repeat-line"><span className="repeat-dots"><i /><i /><i /></span><span>جرّب أن تقولها: <b>{activeLetter.letter} — {activeLetter.word}</b></span></div>
@@ -813,11 +864,12 @@ export default function LearningApp({ page }: { page: LearningPage }) {
                       {speechRecognitionSupported ? <div className="pronunciation-actions"><button className="hear-model-button" onClick={playPracticeModel}><Volume2 size={15} /> اسمع الكلمة</button><button className={cn("pronunciation-button", isChildSpeaking && "listening")} onClick={startPronunciationCheck} disabled={isChildSpeaking}><Mic size={16} /> {isChildSpeaking ? "نستمع…" : "قلها الآن"}</button></div> : <span className="speech-support-note">{speechRecognitionSupported === null ? "تجهيز الميكروفون…" : "متاح في Chrome وEdge"}</span>}
                       {pronunciationPhase === "success" && <div className="pronunciation-result correct"><Check size={18} /><div><b>صح! أحسنت</b><span>نطقت <em lang="en">{activeLetter.word}</em> بشكل صحيح</span></div></div>}
                       {pronunciationPhase === "retry" && <div className="pronunciation-result retry"><X size={18} /><div><b>حاول مرة أخرى</b><span>اسمع الكلمة ثم قلها ببطء</span></div></div>}
-                      {pronunciationHeard && pronunciationPhase !== "listening" && <div className={cn("speech-heard", pronunciationPhase === "success" && "clear")}><span>سمعنا:</span><b lang="en">{pronunciationHeard}</b>{pronunciationMatch !== null && <small>{pronunciationMatch >= .82 ? "واضحة جدًا" : pronunciationMatch >= .55 ? "قريبة من الكلمة" : "جرّب ببطء أكثر"}</small>}</div>}
+                      {pronunciationHeard && pronunciationPhase !== "listening" && <div className={cn("speech-heard", pronunciationPhase === "success" && "clear")}><span>سمعنا:</span><b lang="en">{pronunciationHeard}</b>{pronunciationMatch !== null && <small className="score-chip">{Math.round(pronunciationMatch * 100)}٪ · {pronunciationMatch >= .82 ? "واضحة جدًا" : pronunciationMatch >= .55 ? "قريبة من الكلمة" : "جرّب ببطء أكثر"}</small>}</div>}
+                      {lastRecordingUrl && pronunciationPhase !== "listening" && <div className="recording-review"><button className="playback-button" onClick={playChildRecording}><Volume2 size={14} /> اسمع صوتك</button><small>التسجيل في الذاكرة فقط ولا يُحفظ</small></div>}
                       {pronunciationPhase === "retry" && <div className="pronunciation-hint"><span className="hint-letter" lang="en">{activeLetter.letter}</span><div><b>تلميح</b><p>الكلمة هي: <strong lang="en">{activeLetter.word}</strong></p><small>ابدأ بصوت <em>{activeLetter.hint}</em>.</small></div></div>}
                       {pronunciationFeedback && pronunciationPhase === "unavailable" && <p className="pronunciation-feedback">{pronunciationFeedback}</p>}
                       {pronunciationAttempts > 0 && pronunciationPhase === "retry" && <span className="attempt-badge">محاولة {pronunciationAttempts} · أنت تتعلم بشكل ممتاز</span>}
-                      <p className="mic-privacy">اطلب مساعدة ولي الأمر. اللعبة لا تحفظ تسجيلًا صوتيًا.</p>
+                      <p className="mic-privacy">اطلب مساعدة ولي الأمر. صوتك يُقيَّم لحظيًا ولا يُرسل أو يُخزَّن في أي مكان.</p>
                     </div>
                     <button className={cn("complete-button", completedLetters.has(activeLetter.letter) && "is-done")} onClick={() => toggleLetterComplete(activeLetter.letter)}>
                       {completedLetters.has(activeLetter.letter) ? <><Check size={17} /> تمّت المراجعة</> : <>حفظت هذا الحرف <Bookmark size={17} /></>}
@@ -867,7 +919,8 @@ export default function LearningApp({ page }: { page: LearningPage }) {
                       <p className="sentence-english" lang="en">{sentence.english}</p>
                       <p className="sentence-arabic">{sentence.arabic}</p>
                       <div className="sentence-actions"><button className={cn("sentence-play", isSpeaking && "speaking")} onClick={() => playSentencePracticeModel(sentence)} aria-label={`استمع إلى ${sentence.english}`}><Volume2 size={17} /> اسمع</button>{speechRecognitionSupported && <button className={cn("sentence-mic", sentencePractice.id === sentence.id && sentencePractice.phase === "listening" && "listening")} onClick={() => startSentencePronunciationCheck(sentence)} disabled={isChildSpeaking} aria-label={`قل الجملة ${sentence.english}`}><Mic size={16} /> {sentencePractice.id === sentence.id && sentencePractice.phase === "listening" ? "نسمع" : "قلها"}</button>}<button className={cn("bookmark-button", isDone && "saved")} onClick={() => toggleSentenceComplete(sentence.id)} aria-label={isDone ? "إلغاء حفظ الجملة" : "حفظ الجملة"}>{isDone ? <Check size={17} /> : <Bookmark size={17} />}</button></div>
-                      {sentencePractice.id === sentence.id && sentencePractice.feedback && <div className={cn("sentence-practice-feedback", `phase-${sentencePractice.phase}`)} aria-live="polite"><span>{sentencePractice.phase === "success" ? <Check size={13} /> : sentencePractice.phase === "retry" ? <X size={13} /> : <Mic size={13} />}</span><div><b>{sentencePractice.phase === "success" ? "صح! أحسنت" : sentencePractice.phase === "retry" ? "حاول مرة أخرى" : sentencePractice.phase === "listening" ? "نستمع إليك" : "تدريب الجملة"}</b><p>{sentencePractice.feedback}</p>{sentencePractice.heard && sentencePractice.phase !== "listening" && <small>سمعنا: <em lang="en">{sentencePractice.heard}</em>{sentencePractice.match !== null && ` · ${sentencePractice.match >= .76 ? "واضحة جدًا" : sentencePractice.match >= .45 ? "قريبة من الجملة" : "قلها ببطء أكثر"}`}</small>}</div></div>}
+                      {sentencePractice.id === sentence.id && sentencePractice.feedback && <div className={cn("sentence-practice-feedback", `phase-${sentencePractice.phase}`)} aria-live="polite"><span>{sentencePractice.phase === "success" ? <Check size={13} /> : sentencePractice.phase === "retry" ? <X size={13} /> : <Mic size={13} />}</span><div><b>{sentencePractice.phase === "success" ? "صح! أحسنت" : sentencePractice.phase === "retry" ? "حاول مرة أخرى" : sentencePractice.phase === "listening" ? "نستمع إليك" : "تدريب الجملة"}</b><p>{sentencePractice.feedback}</p>{sentencePractice.heard && sentencePractice.phase !== "listening" && <small>سمعنا: <em lang="en">{sentencePractice.heard}</em>{sentencePractice.match !== null && ` · ${Math.round(sentencePractice.match * 100)}٪ · ${sentencePractice.match >= .76 ? "واضحة جدًا" : sentencePractice.match >= .45 ? "قريبة من الجملة" : "قلها ببطء أكثر"}`}</small>}</div></div>}
+                      {sentencePractice.id === sentence.id && lastRecordingUrl && sentencePractice.phase !== "listening" && <div className="recording-review"><button className="playback-button" onClick={playChildRecording}><Volume2 size={14} /> اسمع صوتك</button><small>التسجيل في الذاكرة فقط ولا يُحفظ</small></div>}
                     </article>;
                   })}
                 </div>
