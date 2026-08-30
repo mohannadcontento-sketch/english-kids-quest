@@ -206,3 +206,96 @@ export async function assessRecording(blob: Blob, referenceText: string): Promis
     try { speechConfig.close(); } catch { /* already closed */ }
   }
 }
+
+/*
+  ---------------------------------------------------------------------------
+  Free server engine — Groq-hosted Whisper (المحرك الاحترافي المجاني).
+  ---------------------------------------------------------------------------
+  Whisper is an open-source (MIT) speech model, and Groq's API free tier
+  requires NO credit card — just a key from console.groq.com/keys.
+  The recording is sent to the same-origin endpoint /api/assess (a tiny
+  Vercel serverless function) which holds the real key server-side and
+  returns { transcript, score }. The child downloads nothing at all.
+*/
+
+export type ServerAssessment = {
+  transcript: string;
+  /** Best similarity (0-1) between the transcript and the expected text. */
+  score: number;
+};
+
+const GROQ_KEY_STORAGE = "ekq-groq-key";
+
+export function getParentGroqKey(): string | null {
+  try {
+    const key = (localStorage.getItem(GROQ_KEY_STORAGE) ?? "").trim();
+    return key || null;
+  } catch { /* private mode */ }
+  return null;
+}
+
+export function saveParentGroqKey(key: string) {
+  localStorage.setItem(GROQ_KEY_STORAGE, key.trim());
+}
+
+export function clearParentGroqKey() {
+  try {
+    localStorage.removeItem(GROQ_KEY_STORAGE);
+  } catch { /* private mode */ }
+}
+
+/**
+ * Zero-cost probe: is the free professional engine usable in this deployment?
+ * True when the parent saved a key here OR the server endpoint reports a
+ * configured GROQ_API_KEY (works for every visitor on Vercel).
+ */
+export async function probeServerAssessment(): Promise<boolean> {
+  if (getParentGroqKey()) return true;
+  try {
+    const url = new URL("api/assess", window.location.href).toString();
+    const response = await fetch(url, { cache: "no-store" });
+    if (!response.ok) return false;
+    const data = (await response.json()) as { configured?: boolean };
+    return Boolean(data?.configured);
+  } catch {
+    return false;
+  }
+}
+
+/** Blob → base64 (recordings are small: a 13s opus clip is ~40KB). */
+function blobToBase64(blob: Blob): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => {
+      const result = String(reader.result ?? "");
+      resolve(result.includes(",") ? result.slice(result.indexOf(",") + 1) : result);
+    };
+    reader.onerror = () => reject(new Error("blob-read-failed"));
+    reader.readAsDataURL(blob);
+  });
+}
+
+/**
+ * Assess a recording through the free server endpoint.
+ * Throws on any failure — the caller falls back to the free browser engines.
+ */
+export async function serverAssessRecording(blob: Blob, expected: string): Promise<ServerAssessment> {
+  if (!blob.size) throw new Error("empty-recording");
+  if (!expected.trim()) throw new Error("empty-expected");
+  const audioBase64 = await blobToBase64(blob);
+  const headers: Record<string, string> = { "Content-Type": "application/json" };
+  const parentKey = getParentGroqKey();
+  if (parentKey) headers["x-groq-key"] = parentKey;
+  const url = new URL("api/assess", window.location.href).toString();
+  const response = await fetch(url, {
+    method: "POST",
+    headers,
+    body: JSON.stringify({ expected, mime: blob.type || "audio/webm", audioBase64 }),
+  });
+  if (!response.ok) {
+    const detail = (await response.json().catch(() => null)) as { error?: string } | null;
+    throw new Error(`server-assess-failed:${response.status}:${detail?.error ?? "unknown"}`);
+  }
+  const data = (await response.json()) as { transcript?: string; score?: number };
+  return { transcript: String(data?.transcript ?? "").trim(), score: Number(data?.score ?? 0) };
+}

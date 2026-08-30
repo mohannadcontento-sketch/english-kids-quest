@@ -32,7 +32,7 @@ import { cn } from "@/lib/utils";
 import { withBase, withAssetV } from "@/lib/base";
 import { getEmbeddedAudioCue, type AudioCue } from "@/lib/embeddedAudio";
 import { isSmartEngineReady, loadSmartEngine, transcribeRecording } from "@/lib/whisperEngine";
-import { assessRecording, clearParentAzureConfig, getParentAzureConfig, resolveAzureCredentials, saveParentAzureConfig } from "@/lib/pronEngine";
+import { assessRecording, clearParentAzureConfig, clearParentGroqKey, getParentAzureConfig, getParentGroqKey, probeServerAssessment, resolveAzureCredentials, saveParentAzureConfig, saveParentGroqKey, serverAssessRecording } from "@/lib/pronEngine";
 import { Link, useLocation } from "wouter";
 
 type Mode = "letters" | "sentences";
@@ -60,6 +60,7 @@ type SpeechRecognitionLike = {
 };
 type SpeechRecognitionConstructor = new () => SpeechRecognitionLike;
 type VoiceSessionDecision = { match: number; transcript: string };
+type ProAssessmentOutcome = { match: number; transcript: string };
 type VoiceSessionFailReason = "quiet" | "mismatch";
 type VoiceSessionConfig = {
   minMs: number;
@@ -194,10 +195,11 @@ const sentencePuzzles = [
 // Listening session timings: kids need enough time to breathe, start speaking, and repeat once.
 const WORD_LISTEN = { minMs: 2000, maxMs: 9000, threshold: 0.8 };
 const SENTENCE_LISTEN = { minMs: 3000, maxMs: 13000, threshold: 0.76 };
-// Professional-engine pass thresholds: Azure word accuracy (0-100) mapped to 0-1.
-// Kids' apps grade generously — a clear attempt passes, mumbling does not.
-const AZURE_WORD = { threshold: 0.72 };
-const AZURE_SENTENCE = { threshold: 0.64 };
+// Cloud-engine pass thresholds mapped to 0-1. Kids' apps grade generously —
+// a clear attempt passes, mumbling does not. (Groq Whisper transcripts are
+// accurate; sentences allow partial word coverage.)
+const SERVER_WORD = { threshold: 0.78 };
+const SERVER_SENTENCE = { threshold: 0.62 };
 const LISTEN_GRACE_MS = 3200;
 const LISTEN_MAX_RESTARTS = 4;
 
@@ -268,8 +270,11 @@ function sentenceSimilarity(spoken: string, expected: string) {
   const source = normalizeSpokenEnglish(spoken);
   const target = normalizeSpokenEnglish(expected);
   if (!source || !target) return 0;
-  const targetWords = target.split(" ");
+  // Articles carry no pronunciation signal for kids — drop them from the
+  // target side so "the cat is black" scores 1.0, not 0.75.
+  const targetWords = target.split(" ").filter((word) => !ARTICLE_WORDS.has(word));
   const spokenWords = source.split(" ");
+  if (!targetWords.length) return 1;
   const matchedWords = targetWords.filter((word) => {
     const plain = singularize(word);
     return spokenWords.some((candidate) => wordSimilarity(candidate, word) >= 0.78 || (plain !== word && wordSimilarity(candidate, plain) >= 0.8));
@@ -365,6 +370,9 @@ export default function LearningApp({ page }: { page: LearningPage }) {
   const [smartEngineStatus, setSmartEngineStatus] = useState<"idle" | "loading" | "ready" | "error">("idle");
   const [smartEngineProgress, setSmartEngineProgress] = useState(0);
   const [proEngineStatus, setProEngineStatus] = useState<ProEngineStatus>("checking");
+  const [serverEngineReady, setServerEngineReady] = useState(false);
+  const [azureEngineReady, setAzureEngineReady] = useState(false);
+  const [groqKeyInput, setGroqKeyInput] = useState("");
   const [engineSettingsOpen, setEngineSettingsOpen] = useState(false);
   const [azureKeyInput, setAzureKeyInput] = useState("");
   const [azureRegionInput, setAzureRegionInput] = useState("");
@@ -438,12 +446,15 @@ export default function LearningApp({ page }: { page: LearningPage }) {
     setSpeechRecognitionSupported(Boolean(browserWindow.SpeechRecognition ?? browserWindow.webkitSpeechRecognition));
   }, []);
 
-  // Probe the professional engine once on open (parent key or server token).
-  // Pure credentials check — zero downloads for the child.
+  // Probe the professional engines once on open: the free Groq Whisper server
+  // endpoint and/or an Azure parent key. Pure credentials checks — zero downloads.
   useEffect(() => {
     let cancelled = false;
-    void resolveAzureCredentials().then((credentials) => {
-      if (!cancelled) setProEngineStatus(credentials ? "ready" : "unavailable");
+    void Promise.all([probeServerAssessment(), resolveAzureCredentials()]).then(([serverOk, azure]) => {
+      if (cancelled) return;
+      setServerEngineReady(serverOk);
+      setAzureEngineReady(Boolean(azure));
+      setProEngineStatus(serverOk || azure ? "ready" : "unavailable");
     });
     return () => { cancelled = true; };
   }, []);
@@ -460,8 +471,8 @@ export default function LearningApp({ page }: { page: LearningPage }) {
       setSmartEngineStatus("ready");
       return;
     }
-    void resolveAzureCredentials().then((credentials) => {
-      if (credentials) return; // the professional engine covers evaluation
+    void Promise.all([probeServerAssessment(), resolveAzureCredentials()]).then(([serverOk, azure]) => {
+      if (serverOk || azure) return; // a professional engine covers evaluation
       void ensureSmartEngine();
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -633,12 +644,13 @@ export default function LearningApp({ page }: { page: LearningPage }) {
     const parent = getParentAzureConfig();
     setAzureKeyInput(parent?.key ?? "");
     setAzureRegionInput(parent?.region ?? "");
+    setGroqKeyInput(getParentGroqKey() ?? "");
     setEngineSettingsNotice("");
     setEngineSettingsOpen(true);
   };
 
   // Engine banner: which judging engine is active, with one-tap enablement.
-  // The professional engine (Azure) is promoted first — zero downloads.
+  // The free professional engine (Groq Whisper) is promoted first — zero downloads.
   const engineBanner = proEngineStatus === "ready" ? (
     <div className="engine-banner ready"><Sparkles size={13} /> المحرك الاحترافي يعمل — تقييم دقيق لكل صوت وكلمة بدون أي تنزيل<button className="engine-link" onClick={openEngineSettings}>الإعدادات</button></div>
   ) : smartEngineStatus === "ready" ? (
@@ -646,7 +658,7 @@ export default function LearningApp({ page }: { page: LearningPage }) {
   ) : smartEngineStatus === "loading" ? (
     <div className="engine-banner"><span>جاري تنزيل المحرك الذكي… {Math.round(smartEngineProgress)}٪</span><div className="engine-progress"><span style={{ width: `${smartEngineProgress}%` }} /></div><small>اختياري — مرة واحدة فقط (~45 م.ب) — بعد ذلك يعمل بدون إنترنت</small></div>
   ) : (
-    <div className="engine-banner enable"><Sparkles size={13} /><button className="engine-link" onClick={openEngineSettings}>{smartEngineStatus === "error" ? "تعذر المحرك الذكي — فعّل المحرك الاحترافي بدون أي تنزيل" : "فعّل المحرك الاحترافي: تقييم أدق لكل صوت — بدون تنزيل أي ملفات"}</button><button className="engine-link subtle" onClick={enableSmartEngine}>أو فعّل المحرك الذكي داخل الجهاز (~45 م.ب)</button></div>
+    <div className="engine-banner enable"><Sparkles size={13} /><button className="engine-link" onClick={openEngineSettings}>{smartEngineStatus === "error" ? "تعذر المحرك الذكي — فعّل المحرك الاحترافي المجاني بدون أي تنزيل" : "فعّل المحرك الاحترافي مجانًا بدون بطاقة: تقييم أدق لكل صوت — بدون تنزيل أي ملفات"}</button><button className="engine-link subtle" onClick={enableSmartEngine}>أو فعّل المحرك الذكي داخل الجهاز (~45 م.ب)</button></div>
   );
 
   const startVoiceRecording = () => new Promise<boolean>((resolve) => {
@@ -958,12 +970,16 @@ export default function LearningApp({ page }: { page: LearningPage }) {
 
   /**
    * Professional assessment session: records for the full listening window,
-   * then sends the audio to Azure Pronunciation Assessment (phoneme-level
-   * scoring — the technology professional language apps use).
-   * Falls back to the free browser engine on any Azure failure, so the
+   * then lets a cloud judge score the audio via a pluggable assess function —
+   * the free Groq Whisper engine or Azure Pronunciation Assessment.
+   * Falls back to the free browser engine on any failure, so the
    * child is never blocked.
    */
-  const runAzureAssessmentSession = async (config: VoiceSessionConfig, referenceText: string) => {
+  const runProAssessmentSession = async (
+    config: VoiceSessionConfig,
+    referenceText: string,
+    assessFn: (blob: Blob, reference: string) => Promise<ProAssessmentOutcome>,
+  ) => {
     audioRef.current?.pause();
     setIsChildSpeaking(true);
     let disposed = false;
@@ -1006,17 +1022,45 @@ export default function LearningApp({ page }: { page: LearningPage }) {
     }
     config.onRescueStart?.();
     try {
-      const scores = await assessRecording(blob, referenceText);
-      const decision: VoiceSessionDecision = {
-        match: scores.accuracy / 100,
-        transcript: scores.recognized || scores.words.map((word) => word.word).join(" "),
-      };
+      const outcome = await assessFn(blob, referenceText);
+      const decision: VoiceSessionDecision = { match: outcome.match, transcript: outcome.transcript };
       if (decision.match >= config.successThreshold) config.onSuccess(decision);
       else config.onFail(decision, "mismatch");
     } catch {
-      // Professional engine hiccup (offline, quota, key) — never block the child.
+      // Cloud engine hiccup (offline, quota, key) — never block the child.
       await runVoiceSession(config);
     }
+  };
+
+  /** Azure Pronunciation Assessment: phoneme-level accuracy score (0-100 → 0-1). */
+  const azureAssess = (blob: Blob, reference: string): Promise<ProAssessmentOutcome> =>
+    assessRecording(blob, reference).then((scores) => ({
+      match: scores.accuracy / 100,
+      transcript: scores.recognized || scores.words.map((word) => word.word).join(" "),
+    }));
+
+  /** Free Groq Whisper server engine: accurate transcript + fuzzy-match score. */
+  const serverAssess = (blob: Blob, reference: string): Promise<ProAssessmentOutcome> =>
+    serverAssessRecording(blob, reference).then((assessment) => ({
+      match: assessment.score,
+      transcript: assessment.transcript,
+    }));
+
+  /**
+   * Dispatch the best available professional engine for this attempt:
+   * free Groq Whisper (no card, no download) first, Azure second, and when
+   * neither is configured return false so the caller uses the browser engine.
+   */
+  const startProAssessment = (config: VoiceSessionConfig, referenceText: string, thresholds: { threshold: number }) => {
+    if (serverEngineReady) {
+      runProAssessmentSession({ ...config, successThreshold: thresholds.threshold }, referenceText, serverAssess);
+      return true;
+    }
+    if (azureEngineReady) {
+      runProAssessmentSession({ ...config, successThreshold: thresholds.threshold }, referenceText, azureAssess);
+      return true;
+    }
+    return false;
   };
 
   const showPronunciationRetry = (message: string) => {
@@ -1082,11 +1126,9 @@ export default function LearningApp({ page }: { page: LearningPage }) {
         setPronunciationFeedback("محتاجين تنزيل «محرك التعرف الذكي» أول مرة فقط (يحتاج إنترنت). فعّله من زر المحرك بالأعلى ثم جرّب مرة أخرى.");
       },
     };
-    // Professional engine first (phoneme-level scoring, zero downloads);
+    // Professional engine first (accurate cloud judging, zero downloads);
     // free browser engine as the default path for everyone else.
-    if (proEngineStatus === "ready") {
-      runAzureAssessmentSession({ ...sessionConfig, successThreshold: AZURE_WORD.threshold }, activeLetter.word);
-    } else {
+    if (!startProAssessment(sessionConfig, activeLetter.word, SERVER_WORD)) {
       runVoiceSession(sessionConfig);
     }
   };
@@ -1146,9 +1188,7 @@ export default function LearningApp({ page }: { page: LearningPage }) {
         updateSentencePractice(sentence.id, { phase: "unavailable", feedback: "محتاجين تنزيل «محرك التعرف الذكي» أول مرة فقط (يحتاج إنترنت). فعّله من زر المحرك أعلى قائمة الجمل ثم جرّب." });
       },
     };
-    if (proEngineStatus === "ready") {
-      runAzureAssessmentSession({ ...sessionConfig, successThreshold: AZURE_SENTENCE.threshold }, sentence.english);
-    } else {
+    if (!startProAssessment(sessionConfig, sentence.english, SERVER_SENTENCE)) {
       runVoiceSession(sessionConfig);
     }
   };
@@ -1375,7 +1415,7 @@ export default function LearningApp({ page }: { page: LearningPage }) {
                       {pronunciationPhase === "retry" && <div className="pronunciation-hint"><span className="hint-letter" lang="en">{activeLetter.letter}</span><div><b>تلميح</b><p>الكلمة هي: <strong lang="en">{activeLetter.word}</strong></p><small>ابدأ بصوت <em>{activeLetter.hint}</em>.</small></div></div>}
                       {pronunciationFeedback && (pronunciationPhase === "unavailable" || pronunciationPhase === "retry") && <p className="pronunciation-feedback">{pronunciationFeedback}</p>}
                       {pronunciationAttempts > 0 && pronunciationPhase === "retry" && <span className="attempt-badge">محاولة {pronunciationAttempts} · أنت تتعلم بشكل ممتاز</span>}
-                      <p className="mic-privacy">اطلب مساعدة ولي الأمر. {proEngineStatus === "ready" ? "عند تفعيل المحرك الاحترافي يُرسل الصوت لخدمة Microsoft للتقييم اللحظي فقط ولا يُخزَّن." : "صوتك يُقيَّم لحظيًا ولا يُرسل أو يُخزَّن في أي مكان."}</p>
+                      <p className="mic-privacy">اطلب مساعدة ولي الأمر. {proEngineStatus === "ready" ? "عند تفعيل المحرك الاحترافي يُرسل الصوت لخدمة تقييم سحابية لتحليله لحظيًا فقط ولا يُخزَّن." : "صوتك يُقيَّم لحظيًا ولا يُرسل أو يُخزَّن في أي مكان."}</p>
                     </div>
                     <button className={cn("complete-button", completedLetters.has(activeLetter.letter) && "is-done")} onClick={() => toggleLetterComplete(activeLetter.letter)}>
                       {completedLetters.has(activeLetter.letter) ? <><Check size={17} /> تمّت المراجعة</> : <>حفظت هذا الحرف <Bookmark size={17} /></>}
@@ -1504,35 +1544,68 @@ export default function LearningApp({ page }: { page: LearningPage }) {
           <div className="engine-settings-head"><b>محرك تقييم النطق</b><button onClick={() => setEngineSettingsOpen(false)} aria-label="إغلاق"><X size={16} /></button></div>
           <p className="engine-settings-intro">التطبيق يقيّم نطق الطفل بأفضل محرك متاح، بالترتيب التالي:</p>
           <ol className="engine-list">
-            <li className={proEngineStatus === "ready" ? "on" : undefined}><b>المحرك الاحترافي — Microsoft Azure</b><span>تقييم دقيق لكل صوت وكلمة (نفس تقنية تطبيقات التعليم المحترفة) بدون تنزيل أي ملفات. الطبقة المجانية حتى 5 ساعات شهريًا.</span></li>
+            <li className={serverEngineReady ? "on" : undefined}><b>المحرك الاحترافي المجاني — Whisper عبر Groq (مفتوح المصدر)</b><span>دقة عالية لكل كلمة وجملة بدون أي تنزيل على جهاز الطفل. مجاني 100% بدون بطاقة — مفتاح مجاني من console.groq.com يعطي 2000 تقييم يوميًا.</span></li>
             <li><b>محرك المتصفح المجاني</b><span>يعمل فورًا في كروم وإيدج وسفاري بدون أي إعداد.</span></li>
             <li className={smartEngineStatus === "ready" ? "on" : undefined}><b>المحرك الذكي داخل الجهاز</b><span>اختياري — تنزيل مرة واحدة (~45 م.ب) ثم يعمل بدون إنترنت.</span></li>
           </ol>
-          <div className="engine-status-line">{proEngineStatus === "ready" ? <><Check size={14} /> المحرك الاحترافي مفعّل حاليًا</> : proEngineStatus === "checking" ? "جاري فحص المحرك الاحترافي…" : "المحرك الاحترافي غير مفعّل — يعمل التطبيق بالمحرك المجاني"}</div>
+          <div className="engine-status-line">
+            {serverEngineReady ? <><Check size={14} /> المحرك الاحترافي المجاني (Groq) مفعّل حاليًا</> : proEngineStatus === "checking" ? "جاري فحص المحرك الاحترافي…" : azureEngineReady ? <><Check size={14} /> مفعّل بمفتاح Azure — لإضافة المحرك المجاني اتبع الخطوات بالأسفل</> : "المحرك الاحترافي المجاني غير مفعّل — يعمل التطبيق بالمحرك المجاني"}
+          </div>
           <div className="engine-fields">
-            <label>مفتاح Azure Speech<input dir="ltr" value={azureKeyInput} onChange={(event) => setAzureKeyInput(event.target.value)} placeholder="Key من بوابة Azure" autoComplete="off" /></label>
-            <label>المنطقة Region<input dir="ltr" value={azureRegionInput} onChange={(event) => setAzureRegionInput(event.target.value)} placeholder="eastus" autoComplete="off" /></label>
+            <label>مفتاح Groq المجاني (هذا الجهاز فقط)<input dir="ltr" value={groqKeyInput} onChange={(event) => setGroqKeyInput(event.target.value)} placeholder="gsk_... من console.groq.com/keys" autoComplete="off" /></label>
           </div>
           <div className="engine-settings-actions">
             <button className="engine-save" onClick={() => {
-              if (!azureKeyInput.trim() || !azureRegionInput.trim()) {
-                setEngineSettingsNotice("اكتب المفتاح والمنطقة معًا — أو امسح الحقول للعودة للمحرك المجاني.");
+              if (!groqKeyInput.trim()) {
+                setEngineSettingsNotice("اكتب مفتاح Groq — أو استخدم طريقة Vercel بالأسفل ليعمل لكل الزوار.");
                 return;
               }
-              saveParentAzureConfig(azureKeyInput, azureRegionInput);
+              saveParentGroqKey(groqKeyInput);
+              setServerEngineReady(true);
               setProEngineStatus("ready");
-              setEngineSettingsNotice("تم التفعيل! التقييم الاحترافي يعمل من المحاولة القادمة.");
+              setEngineSettingsNotice("تم التفعيل! التقييم الاحترافي المجاني يعمل من المحاولة القادمة.");
             }}>حفظ وتفعيل</button>
             <button className="engine-clear" onClick={() => {
-              clearParentAzureConfig();
-              setAzureKeyInput("");
-              setAzureRegionInput("");
-              void resolveAzureCredentials().then((credentials) => setProEngineStatus(credentials ? "ready" : "unavailable"));
-              setEngineSettingsNotice("تم المسح — رجعنا للمحرك المجاني.");
-            }}>مسح المفتاح</button>
+              clearParentGroqKey();
+              setGroqKeyInput("");
+              void probeServerAssessment().then((serverOk) => {
+                setServerEngineReady(serverOk);
+                setProEngineStatus(serverOk || azureEngineReady ? "ready" : "unavailable");
+              });
+              setEngineSettingsNotice("تم مسح مفتاح هذا الجهاز — لو المفتاح مضاف على Vercel سيظل يعمل لكل الزوار.");
+            }}>مسح مفتاح الجهاز</button>
           </div>
           {engineSettingsNotice && <p className="engine-settings-notice" aria-live="polite">{engineSettingsNotice}</p>}
-          <p className="engine-settings-help">للمفتاح المجاني: portal.azure.com ← أنشئ خدمة «Speech» ← انسخ Key و Region. لو التطبيق منشور على Vercel يمكن وضع المفتاح في متغيرات البيئة AZURE_SPEECH_KEY و AZURE_SPEECH_REGION فيعمل لكل الزوار بدون هذه النافذة.</p>
+          <p className="engine-settings-help">الأفضل لكل الزوار: أنشئ مفتاحًا مجانيًا في console.groq.com/keys (بدون بطاقة)، ثم في Vercel ← Settings ← Environment Variables أضف GROQ_API_KEY والصق المفتاح واعمل Redeploy — فيعمل المحرك الاحترافي لكل الزوار تلقائيًا بدون هذه النافذة.</p>
+          <details className="engine-advanced">
+            <summary>بديل متقدم: Microsoft Azure (يحتاج بطاقة عند التسجيل)</summary>
+            <div className="engine-fields">
+              <label>مفتاح Azure Speech<input dir="ltr" value={azureKeyInput} onChange={(event) => setAzureKeyInput(event.target.value)} placeholder="Key من بوابة Azure" autoComplete="off" /></label>
+              <label>المنطقة Region<input dir="ltr" value={azureRegionInput} onChange={(event) => setAzureRegionInput(event.target.value)} placeholder="eastus" autoComplete="off" /></label>
+            </div>
+            <div className="engine-settings-actions">
+              <button className="engine-save" onClick={() => {
+                if (!azureKeyInput.trim() || !azureRegionInput.trim()) {
+                  setEngineSettingsNotice("اكتب مفتاح Azure والمنطقة معًا — أو امسح الحقول.");
+                  return;
+                }
+                saveParentAzureConfig(azureKeyInput, azureRegionInput);
+                setAzureEngineReady(true);
+                setProEngineStatus("ready");
+                setEngineSettingsNotice("تم حفظ مفتاح Azure — يعمل من المحاولة القادمة.");
+              }}>حفظ مفتاح Azure</button>
+              <button className="engine-clear" onClick={() => {
+                clearParentAzureConfig();
+                setAzureKeyInput("");
+                setAzureRegionInput("");
+                void resolveAzureCredentials().then((credentials) => {
+                  setAzureEngineReady(Boolean(credentials));
+                  setProEngineStatus(serverEngineReady || credentials ? "ready" : "unavailable");
+                });
+                setEngineSettingsNotice("تم مسح مفتاح Azure.");
+              }}>مسح مفتاح Azure</button>
+            </div>
+          </details>
         </div>
       </div>}
       <footer className="footer container"><span>صُمّم بحبّ للعقول الصغيرة.</span><span>English Kids Quest <span className="footer-dot">·</span> رحلة اليوم تبدأ بحرف</span></footer>

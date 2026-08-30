@@ -318,6 +318,10 @@ a { color: inherit; text-decoration: none; }
 .engine-clear { color: #8a5a4a; background: #f6e8e2; }
 .engine-settings-notice { margin: 9px 0 0; color: var(--emerald-dark); font-size: 10.5px; font-weight: 800; }
 .engine-settings-help { margin: 9px 0 0; padding-top: 9px; border-top: 1px dashed #e3d9c3; color: #8a7a63; font-size: 9.5px; font-weight: 700; line-height: 1.65; }
+.engine-advanced { margin: 11px 0 0; padding: 10px 12px; border: 1.5px dashed rgba(31, 42, 68, 0.22); border-radius: 12px; background: rgba(255, 252, 245, 0.6); }
+.engine-advanced summary { cursor: pointer; font-size: 10.5px; font-weight: 800; color: #7a6a52; user-select: none; }
+.engine-advanced[open] summary { margin-bottom: 8px; }
+.engine-advanced .engine-fields { margin-top: 8px; }
 .review-meter { display: flex; align-items: center; justify-content: center; gap: 5px; margin-top: 9px; padding: 7px; color: var(--emerald-dark); background: #f0f8f3; border: 1px solid #c5e2d5; font-size: 10px; font-weight: 800; border-radius: 999px; animation: gentle-pulse 1.2s ease-in-out infinite; }
 .sentence-practice-feedback .review-meter { height: auto; padding: 6px; margin-top: 7px; font-size: 9px; }
 .heard-chip { display: inline-flex; direction: rtl; gap: 4px; margin-top: 7px; padding: 4px 6px; color: var(--emerald-dark); background: #f0f8f3; border: 1px solid #c5e2d5; font-size: 9px; border-radius: 4px 7px 4px 6px; }
