@@ -32,12 +32,14 @@ import { cn } from "@/lib/utils";
 import { withBase, withAssetV } from "@/lib/base";
 import { getEmbeddedAudioCue, type AudioCue } from "@/lib/embeddedAudio";
 import { isSmartEngineReady, loadSmartEngine, transcribeRecording } from "@/lib/whisperEngine";
+import { assessRecording, clearParentAzureConfig, getParentAzureConfig, resolveAzureCredentials, saveParentAzureConfig } from "@/lib/pronEngine";
 import { Link, useLocation } from "wouter";
 
 type Mode = "letters" | "sentences";
 type SentenceCategory = "الكل" | "التحية" | "اللباقة" | "البيت" | "المشاعر" | "اللعب" | "التعلّم";
 type GameMode = "listen" | "match" | "sentence";
 type PronunciationPhase = "ready" | "listening" | "review" | "retry" | "success" | "unavailable";
+type ProEngineStatus = "checking" | "ready" | "unavailable";
 type CelebrationTheme = "quiz" | "speech" | GameMode;
 type LearningPage = "letters" | "sentences" | "games" | "progress";
 type SpeechRecognitionResultLike = { transcript: string; confidence?: number };
@@ -192,6 +194,10 @@ const sentencePuzzles = [
 // Listening session timings: kids need enough time to breathe, start speaking, and repeat once.
 const WORD_LISTEN = { minMs: 2000, maxMs: 9000, threshold: 0.8 };
 const SENTENCE_LISTEN = { minMs: 3000, maxMs: 13000, threshold: 0.76 };
+// Professional-engine pass thresholds: Azure word accuracy (0-100) mapped to 0-1.
+// Kids' apps grade generously — a clear attempt passes, mumbling does not.
+const AZURE_WORD = { threshold: 0.72 };
+const AZURE_SENTENCE = { threshold: 0.64 };
 const LISTEN_GRACE_MS = 3200;
 const LISTEN_MAX_RESTARTS = 4;
 
@@ -358,6 +364,11 @@ export default function LearningApp({ page }: { page: LearningPage }) {
   const [listenProgress, setListenProgress] = useState(0);
   const [smartEngineStatus, setSmartEngineStatus] = useState<"idle" | "loading" | "ready" | "error">("idle");
   const [smartEngineProgress, setSmartEngineProgress] = useState(0);
+  const [proEngineStatus, setProEngineStatus] = useState<ProEngineStatus>("checking");
+  const [engineSettingsOpen, setEngineSettingsOpen] = useState(false);
+  const [azureKeyInput, setAzureKeyInput] = useState("");
+  const [azureRegionInput, setAzureRegionInput] = useState("");
+  const [engineSettingsNotice, setEngineSettingsNotice] = useState("");
 
   const activeLetter = letters[activeLetterIndex];
   const filteredSentences = useMemo(() => {
@@ -427,8 +438,18 @@ export default function LearningApp({ page }: { page: LearningPage }) {
     setSpeechRecognitionSupported(Boolean(browserWindow.SpeechRecognition ?? browserWindow.webkitSpeechRecognition));
   }, []);
 
-  // If the smart engine was enabled before, warm it up silently on open —
-  // the model is already cached by the browser, so this is instant.
+  // Probe the professional engine once on open (parent key or server token).
+  // Pure credentials check — zero downloads for the child.
+  useEffect(() => {
+    let cancelled = false;
+    void resolveAzureCredentials().then((credentials) => {
+      if (!cancelled) setProEngineStatus(credentials ? "ready" : "unavailable");
+    });
+    return () => { cancelled = true; };
+  }, []);
+
+  // If the on-device engine was enabled on a previous visit, restore it from the
+  // browser cache (no new download). Fresh visitors are never auto-downloaded.
   useEffect(() => {
     try {
       if (localStorage.getItem("ekq-smart-engine") !== "ready") return;
@@ -439,8 +460,10 @@ export default function LearningApp({ page }: { page: LearningPage }) {
       setSmartEngineStatus("ready");
       return;
     }
-    setSmartEngineStatus("loading");
-    void ensureSmartEngine();
+    void resolveAzureCredentials().then((credentials) => {
+      if (credentials) return; // the professional engine covers evaluation
+      void ensureSmartEngine();
+    });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -606,13 +629,24 @@ export default function LearningApp({ page }: { page: LearningPage }) {
     void ensureSmartEngine();
   };
 
-  // Smart-engine banner: opt-in one-time download (~45MB), then fully offline.
-  const engineBanner = smartEngineStatus === "ready" ? (
-    <div className="engine-banner ready"><Sparkles size={13} /> التعرف الذكي جاهز — يقيّم نطق الطفل داخل الجهاز حتى بدون إنترنت</div>
+  const openEngineSettings = () => {
+    const parent = getParentAzureConfig();
+    setAzureKeyInput(parent?.key ?? "");
+    setAzureRegionInput(parent?.region ?? "");
+    setEngineSettingsNotice("");
+    setEngineSettingsOpen(true);
+  };
+
+  // Engine banner: which judging engine is active, with one-tap enablement.
+  // The professional engine (Azure) is promoted first — zero downloads.
+  const engineBanner = proEngineStatus === "ready" ? (
+    <div className="engine-banner ready"><Sparkles size={13} /> المحرك الاحترافي يعمل — تقييم دقيق لكل صوت وكلمة بدون أي تنزيل<button className="engine-link" onClick={openEngineSettings}>الإعدادات</button></div>
+  ) : smartEngineStatus === "ready" ? (
+    <div className="engine-banner ready"><Sparkles size={13} /> المحرك الذكي داخل الجهاز جاهز — يقيّم نطق الطفل حتى بدون إنترنت</div>
   ) : smartEngineStatus === "loading" ? (
-    <div className="engine-banner"><span>جاري تنزيل محرك التعرف الذكي… {Math.round(smartEngineProgress)}٪</span><div className="engine-progress"><span style={{ width: `${smartEngineProgress}%` }} /></div><small>مرة واحدة فقط (~45 م.ب) — بعد ذلك يعمل بدون إنترنت</small></div>
+    <div className="engine-banner"><span>جاري تنزيل المحرك الذكي… {Math.round(smartEngineProgress)}٪</span><div className="engine-progress"><span style={{ width: `${smartEngineProgress}%` }} /></div><small>اختياري — مرة واحدة فقط (~45 م.ب) — بعد ذلك يعمل بدون إنترنت</small></div>
   ) : (
-    <button className="engine-banner enable" onClick={enableSmartEngine}><Sparkles size={13} /> {smartEngineStatus === "error" ? "تعذر تنزيل المحرك الذكي — اضغط للمحاولة مرة أخرى" : "فعّل التعرف الذكي: دقة أعلى في تقييم النطق (تنزيل مرة واحدة ~45 م.ب)"}</button>
+    <div className="engine-banner enable"><Sparkles size={13} /><button className="engine-link" onClick={openEngineSettings}>{smartEngineStatus === "error" ? "تعذر المحرك الذكي — فعّل المحرك الاحترافي بدون أي تنزيل" : "فعّل المحرك الاحترافي: تقييم أدق لكل صوت — بدون تنزيل أي ملفات"}</button><button className="engine-link subtle" onClick={enableSmartEngine}>أو فعّل المحرك الذكي داخل الجهاز (~45 م.ب)</button></div>
   );
 
   const startVoiceRecording = () => new Promise<boolean>((resolve) => {
@@ -922,6 +956,69 @@ export default function LearningApp({ page }: { page: LearningPage }) {
     }
   };
 
+  /**
+   * Professional assessment session: records for the full listening window,
+   * then sends the audio to Azure Pronunciation Assessment (phoneme-level
+   * scoring — the technology professional language apps use).
+   * Falls back to the free browser engine on any Azure failure, so the
+   * child is never blocked.
+   */
+  const runAzureAssessmentSession = async (config: VoiceSessionConfig, referenceText: string) => {
+    audioRef.current?.pause();
+    setIsChildSpeaking(true);
+    let disposed = false;
+    sessionCleanupRef.current = () => { disposed = true; };
+    const started = await startVoiceRecording();
+    if (disposed) {
+      await stopVoiceRecording();
+      return;
+    }
+    if (!started) {
+      config.onDenied();
+      return;
+    }
+    config.onStartListening();
+    const startedAt = Date.now();
+    const stopAt = startedAt + config.maxMs;
+    await new Promise<void>((resolve) => {
+      const intervalId = window.setInterval(() => {
+        if (disposed) {
+          window.clearInterval(intervalId);
+          resolve();
+          return;
+        }
+        const secondsLeft = Math.max(0, Math.ceil((stopAt - Date.now()) / 1000));
+        config.onTick(secondsLeft, Math.min(100, ((Date.now() - startedAt) / config.maxMs) * 100));
+        if (Date.now() >= stopAt) {
+          window.clearInterval(intervalId);
+          resolve();
+        }
+      }, 200);
+    });
+    sessionCleanupRef.current = null;
+    setIsChildSpeaking(false);
+    setListenSecondsLeft(null);
+    const blob = await stopVoiceRecording();
+    if (disposed) return;
+    if (!blob || !blob.size) {
+      config.onFail({ match: 0, transcript: "" }, "quiet");
+      return;
+    }
+    config.onRescueStart?.();
+    try {
+      const scores = await assessRecording(blob, referenceText);
+      const decision: VoiceSessionDecision = {
+        match: scores.accuracy / 100,
+        transcript: scores.recognized || scores.words.map((word) => word.word).join(" "),
+      };
+      if (decision.match >= config.successThreshold) config.onSuccess(decision);
+      else config.onFail(decision, "mismatch");
+    } catch {
+      // Professional engine hiccup (offline, quota, key) — never block the child.
+      await runVoiceSession(config);
+    }
+  };
+
   const showPronunciationRetry = (message: string) => {
     const nextAttempt = pronunciationAttempts + 1;
     setPronunciationAttempts(nextAttempt);
@@ -935,7 +1032,7 @@ export default function LearningApp({ page }: { page: LearningPage }) {
     setPronunciationMatch(null);
     setListenProgress(0);
     setListenSecondsLeft(Math.ceil(WORD_LISTEN.maxMs / 1000));
-    runVoiceSession({
+    const sessionConfig: VoiceSessionConfig = {
       minMs: WORD_LISTEN.minMs,
       maxMs: WORD_LISTEN.maxMs,
       successThreshold: WORD_LISTEN.threshold,
@@ -984,7 +1081,14 @@ export default function LearningApp({ page }: { page: LearningPage }) {
         setPronunciationPhase("unavailable");
         setPronunciationFeedback("محتاجين تنزيل «محرك التعرف الذكي» أول مرة فقط (يحتاج إنترنت). فعّله من زر المحرك بالأعلى ثم جرّب مرة أخرى.");
       },
-    });
+    };
+    // Professional engine first (phoneme-level scoring, zero downloads);
+    // free browser engine as the default path for everyone else.
+    if (proEngineStatus === "ready") {
+      runAzureAssessmentSession({ ...sessionConfig, successThreshold: AZURE_WORD.threshold }, activeLetter.word);
+    } else {
+      runVoiceSession(sessionConfig);
+    }
   };
 
   const playSentencePracticeModel = (sentence: SentenceLesson) => {
@@ -996,7 +1100,7 @@ export default function LearningApp({ page }: { page: LearningPage }) {
     updateSentencePractice(sentence.id, { phase: "listening", feedback: "جهّز نفسك… نفتح الميكروفون.", heard: "", match: null });
     setListenProgress(0);
     setListenSecondsLeft(Math.ceil(SENTENCE_LISTEN.maxMs / 1000));
-    runVoiceSession({
+    const sessionConfig: VoiceSessionConfig = {
       minMs: SENTENCE_LISTEN.minMs,
       maxMs: SENTENCE_LISTEN.maxMs,
       successThreshold: SENTENCE_LISTEN.threshold,
@@ -1041,7 +1145,12 @@ export default function LearningApp({ page }: { page: LearningPage }) {
       onEngineMissing: () => {
         updateSentencePractice(sentence.id, { phase: "unavailable", feedback: "محتاجين تنزيل «محرك التعرف الذكي» أول مرة فقط (يحتاج إنترنت). فعّله من زر المحرك أعلى قائمة الجمل ثم جرّب." });
       },
-    });
+    };
+    if (proEngineStatus === "ready") {
+      runAzureAssessmentSession({ ...sessionConfig, successThreshold: AZURE_SENTENCE.threshold }, sentence.english);
+    } else {
+      runVoiceSession(sessionConfig);
+    }
   };
 
   const chooseListenLetter = (index: number) => {
@@ -1266,7 +1375,7 @@ export default function LearningApp({ page }: { page: LearningPage }) {
                       {pronunciationPhase === "retry" && <div className="pronunciation-hint"><span className="hint-letter" lang="en">{activeLetter.letter}</span><div><b>تلميح</b><p>الكلمة هي: <strong lang="en">{activeLetter.word}</strong></p><small>ابدأ بصوت <em>{activeLetter.hint}</em>.</small></div></div>}
                       {pronunciationFeedback && (pronunciationPhase === "unavailable" || pronunciationPhase === "retry") && <p className="pronunciation-feedback">{pronunciationFeedback}</p>}
                       {pronunciationAttempts > 0 && pronunciationPhase === "retry" && <span className="attempt-badge">محاولة {pronunciationAttempts} · أنت تتعلم بشكل ممتاز</span>}
-                      <p className="mic-privacy">اطلب مساعدة ولي الأمر. صوتك يُقيَّم لحظيًا ولا يُرسل أو يُخزَّن في أي مكان.</p>
+                      <p className="mic-privacy">اطلب مساعدة ولي الأمر. {proEngineStatus === "ready" ? "عند تفعيل المحرك الاحترافي يُرسل الصوت لخدمة Microsoft للتقييم اللحظي فقط ولا يُخزَّن." : "صوتك يُقيَّم لحظيًا ولا يُرسل أو يُخزَّن في أي مكان."}</p>
                     </div>
                     <button className={cn("complete-button", completedLetters.has(activeLetter.letter) && "is-done")} onClick={() => toggleLetterComplete(activeLetter.letter)}>
                       {completedLetters.has(activeLetter.letter) ? <><Check size={17} /> تمّت المراجعة</> : <>حفظت هذا الحرف <Bookmark size={17} /></>}
@@ -1390,6 +1499,42 @@ export default function LearningApp({ page }: { page: LearningPage }) {
           </div>
         </section>
       </main>
+      {engineSettingsOpen && <div className="engine-settings-overlay" onClick={() => setEngineSettingsOpen(false)}>
+        <div className="engine-settings" onClick={(event) => event.stopPropagation()} role="dialog" aria-modal="true" aria-label="إعدادات محرك تقييم النطق">
+          <div className="engine-settings-head"><b>محرك تقييم النطق</b><button onClick={() => setEngineSettingsOpen(false)} aria-label="إغلاق"><X size={16} /></button></div>
+          <p className="engine-settings-intro">التطبيق يقيّم نطق الطفل بأفضل محرك متاح، بالترتيب التالي:</p>
+          <ol className="engine-list">
+            <li className={proEngineStatus === "ready" ? "on" : undefined}><b>المحرك الاحترافي — Microsoft Azure</b><span>تقييم دقيق لكل صوت وكلمة (نفس تقنية تطبيقات التعليم المحترفة) بدون تنزيل أي ملفات. الطبقة المجانية حتى 5 ساعات شهريًا.</span></li>
+            <li><b>محرك المتصفح المجاني</b><span>يعمل فورًا في كروم وإيدج وسفاري بدون أي إعداد.</span></li>
+            <li className={smartEngineStatus === "ready" ? "on" : undefined}><b>المحرك الذكي داخل الجهاز</b><span>اختياري — تنزيل مرة واحدة (~45 م.ب) ثم يعمل بدون إنترنت.</span></li>
+          </ol>
+          <div className="engine-status-line">{proEngineStatus === "ready" ? <><Check size={14} /> المحرك الاحترافي مفعّل حاليًا</> : proEngineStatus === "checking" ? "جاري فحص المحرك الاحترافي…" : "المحرك الاحترافي غير مفعّل — يعمل التطبيق بالمحرك المجاني"}</div>
+          <div className="engine-fields">
+            <label>مفتاح Azure Speech<input dir="ltr" value={azureKeyInput} onChange={(event) => setAzureKeyInput(event.target.value)} placeholder="Key من بوابة Azure" autoComplete="off" /></label>
+            <label>المنطقة Region<input dir="ltr" value={azureRegionInput} onChange={(event) => setAzureRegionInput(event.target.value)} placeholder="eastus" autoComplete="off" /></label>
+          </div>
+          <div className="engine-settings-actions">
+            <button className="engine-save" onClick={() => {
+              if (!azureKeyInput.trim() || !azureRegionInput.trim()) {
+                setEngineSettingsNotice("اكتب المفتاح والمنطقة معًا — أو امسح الحقول للعودة للمحرك المجاني.");
+                return;
+              }
+              saveParentAzureConfig(azureKeyInput, azureRegionInput);
+              setProEngineStatus("ready");
+              setEngineSettingsNotice("تم التفعيل! التقييم الاحترافي يعمل من المحاولة القادمة.");
+            }}>حفظ وتفعيل</button>
+            <button className="engine-clear" onClick={() => {
+              clearParentAzureConfig();
+              setAzureKeyInput("");
+              setAzureRegionInput("");
+              void resolveAzureCredentials().then((credentials) => setProEngineStatus(credentials ? "ready" : "unavailable"));
+              setEngineSettingsNotice("تم المسح — رجعنا للمحرك المجاني.");
+            }}>مسح المفتاح</button>
+          </div>
+          {engineSettingsNotice && <p className="engine-settings-notice" aria-live="polite">{engineSettingsNotice}</p>}
+          <p className="engine-settings-help">للمفتاح المجاني: portal.azure.com ← أنشئ خدمة «Speech» ← انسخ Key و Region. لو التطبيق منشور على Vercel يمكن وضع المفتاح في متغيرات البيئة AZURE_SPEECH_KEY و AZURE_SPEECH_REGION فيعمل لكل الزوار بدون هذه النافذة.</p>
+        </div>
+      </div>}
       <footer className="footer container"><span>صُمّم بحبّ للعقول الصغيرة.</span><span>English Kids Quest <span className="footer-dot">·</span> رحلة اليوم تبدأ بحرف</span></footer>
     </div>
   );

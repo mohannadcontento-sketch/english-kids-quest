@@ -115,6 +115,11 @@ async function decodeToMono16k(blob: Blob): Promise<Float32Array> {
   }
 }
 
+/** Decode a recording to mono 16 kHz Float32 samples — shared with the Azure engine. */
+export async function decodeRecordingToMono16k(blob: Blob): Promise<Float32Array> {
+  return decodeToMono16k(blob);
+}
+
 /** Transcribe a recording; returns "" when the engine is missing or anything fails. */
 export async function transcribeRecording(blob: Blob): Promise<string> {
   if (!pipelinePromise || !blob.size) return "";
