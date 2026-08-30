@@ -198,7 +198,6 @@ const SENTENCE_LISTEN = { minMs: 3000, maxMs: 13000, threshold: 0.76 };
 // Cloud-engine pass thresholds mapped to 0-1. Kids' apps grade generously —
 // a clear attempt passes, mumbling does not. (Groq Whisper transcripts are
 // accurate; sentences allow partial word coverage.)
-const SERVER_WORD = { threshold: 0.78 };
 const SERVER_SENTENCE = { threshold: 0.62 };
 const LISTEN_GRACE_MS = 3200;
 const LISTEN_MAX_RESTARTS = 4;
@@ -283,6 +282,79 @@ function sentenceSimilarity(spoken: string, expected: string) {
   return Math.max(wordSimilarity(source, target), coverage);
 }
 
+/*
+  تقييم الحروف: المتصفح (وWhisper كذلك) لا يتعرف على صوت حرف مفرد (فونيم)
+  لأنه ليس كلمة — لهذا كان تمرين الحروف يفشل بينما الكلمات تعمل.
+  الحل: لكل حرف قائمة إشارات مقبولة مجمعّة من سلوك Web Speech API الفعلي
+  مع نطق الأطفال العرب — صوت الحرف + اسم الحرف + كلمة المثال = أي واحدة نجاح.
+  ملاحظات التحويلات الشائعة: Chrome يسمّ «آه» → "I/are/our" و«أُه» → "a/all".
+*/
+type LetterMatchKind = "sound" | "name" | "word";
+type LetterMatch = { score: number; kind: LetterMatchKind };
+
+const letterUtteranceVariants: Record<string, { sound: string[]; name: string[] }> = {
+  A: { sound: ["a", "ah", "aa", "aah", "ahh", "are", "our", "uh", "i"], name: ["a", "ay", "ei", "ey"] },
+  B: { sound: ["b", "ba", "bah", "buh", "bo"], name: ["b", "be", "bee", "bi", "been"] },
+  C: { sound: ["c", "k", "ka", "kah", "kuh", "ca"], name: ["c", "see", "sea", "si", "cee"] },
+  D: { sound: ["d", "da", "dah", "duh", "de"], name: ["d", "dee", "de", "di"] },
+  E: { sound: ["e", "eh", "a", "ehh", "ed"], name: ["e", "ee", "ea", "eh"] },
+  F: { sound: ["f", "fa", "fah", "fuh", "ff"], name: ["f", "eff", "ef", "efs"] },
+  G: { sound: ["g", "ga", "gah", "guh", "go"], name: ["g", "gee", "je", "ji"] },
+  H: { sound: ["h", "ha", "hah", "huh", "he"], name: ["h", "aitch", "ach", "hay"] },
+  I: { sound: ["i", "ih", "ee", "e"], name: ["i", "eye", "ai", "aye"] },
+  J: { sound: ["j", "ja", "jah", "juh", "je"], name: ["j", "jay", "jae", "jey"] },
+  K: { sound: ["k", "ka", "kah", "kuh", "ca"], name: ["k", "kay", "kae", "key"] },
+  L: { sound: ["l", "la", "lah", "luh", "ll", "el"], name: ["l", "el", "ell"] },
+  M: { sound: ["m", "ma", "mah", "muh", "mm", "em", "am"], name: ["m", "em", "mm", "um"] },
+  N: { sound: ["n", "na", "nah", "nuh", "nn", "en", "an"], name: ["n", "en", "nn"] },
+  O: { sound: ["o", "oh", "aw", "awe", "ooh", "ah"], name: ["o", "oh", "owe", "oo"] },
+  P: { sound: ["p", "pa", "pah", "puh", "pe"], name: ["p", "pee", "pe", "pi"] },
+  Q: { sound: ["q", "qu", "qua", "kwuh", "kuh", "que"], name: ["q", "cue", "queue", "kyu"] },
+  R: { sound: ["r", "ra", "rah", "ruh", "re", "ar"], name: ["r", "are", "ar", "our", "or"] },
+  S: { sound: ["s", "sa", "sah", "suh", "ss", "es"], name: ["s", "ess", "es", "ss"] },
+  T: { sound: ["t", "ta", "tah", "tuh", "te"], name: ["t", "tee", "tea", "ti"] },
+  U: { sound: ["u", "uh", "ooh", "oo", "up", "a"], name: ["u", "you", "yu", "yuu", "ew"] },
+  V: { sound: ["v", "va", "vah", "vuh", "ve"], name: ["v", "vee", "ve", "vi"] },
+  W: { sound: ["w", "wa", "wah", "wuh", "wo"], name: ["w", "double you", "double", "doubleyou", "dabulyou"] },
+  X: { sound: ["x", "ks", "ex", "ecs", "aks"], name: ["x", "ex", "ecs", "eks"] },
+  Y: { sound: ["y", "ya", "yah", "yuh", "ye"], name: ["y", "why", "wy", "wi"] },
+  Z: { sound: ["z", "za", "zah", "zuh", "ze"], name: ["z", "zee", "ze", "zi", "zed"] },
+};
+
+/*
+  نقيس ما قاله الطفل على الحرف المستهدف بثلاث مسارات ونعيد أفضلها:
+  sound = صوت الحرف (فونيكس) · name = اسم الحرف · word = كلمة المثال.
+  الحروف المفردة ("b") تقبل بالتطابق التام فقط حتى لا تتطابق بالخطأ مع كلام عادي.
+  نستخدم levenshteinSimilarity مباشرة للأصوات لأن wordSimilarity يحذف أدوات التعريف
+  (a/an/the) وصوت حرف A نفسه هو "a" — سيُحذف ويُفسد التقييم.
+*/
+function matchLetterUtterances(candidates: string[], letter: LetterLesson): LetterMatch | null {
+  let best: LetterMatch | null = null;
+  const consider = (score: number, kind: LetterMatchKind) => {
+    if (!best || score > best.score) best = { score, kind };
+  };
+  const variants = letterUtteranceVariants[letter.letter];
+  if (!variants) return null;
+  for (const candidate of candidates) {
+    const spoken = normalizeSpokenEnglish(candidate);
+    if (!spoken) continue;
+    const forms = [spoken, ...spoken.split(" ")];
+    for (const form of forms) {
+      for (const token of variants.sound) {
+        if (token === form) consider(1, "sound");
+        else if (token.length > 1 && form.length > 1 && levenshteinSimilarity(form, token) >= 0.8) consider(0.72, "sound");
+      }
+      for (const token of variants.name) {
+        if (token === form) consider(0.95, "name");
+        else if (token.length > 2 && form.length > 2 && levenshteinSimilarity(form, token) >= 0.8) consider(0.7, "name");
+      }
+      const wordScore = wordSimilarity(form, letter.word);
+      if (wordScore >= 0.78) consider(wordScore, "word");
+    }
+  }
+  return best;
+}
+
 function listenSecondsLabel(seconds: number) {
   if (seconds <= 1) return "عندك ثانية واحدة";
   if (seconds === 2) return "عندك ثانيتين";
@@ -354,6 +426,7 @@ export default function LearningApp({ page }: { page: LearningPage }) {
   const [pronunciationMatch, setPronunciationMatch] = useState<number | null>(null);
   const [pronunciationPhase, setPronunciationPhase] = useState<PronunciationPhase>("ready");
   const [pronunciationAttempts, setPronunciationAttempts] = useState(0);
+  const [pronunciationKind, setPronunciationKind] = useState<LetterMatchKind | null>(null);
   const [hasHeardModel, setHasHeardModel] = useState(false);
   const [sentencePractice, setSentencePractice] = useState({ id: null as number | null, phase: "ready" as PronunciationPhase, heard: "", match: null as number | null, feedback: "", attempts: 0, hasHeardModel: false });
   const audioRef = useRef<HTMLAudioElement | null>(null);
@@ -364,6 +437,8 @@ export default function LearningApp({ page }: { page: LearningPage }) {
   const recordingStopResolveRef = useRef<((blob: Blob | null) => void) | null>(null);
   const smartEngineLoadRef = useRef<Promise<boolean> | null>(null);
   const sessionCleanupRef = useRef<(() => void) | null>(null);
+  // المسار الذي نجح به تقييم الحرف الأخير (صوت/اسم/كلمة) — لتخصيص رسالة النجاح
+  const lastLetterKindRef = useRef<LetterMatchKind | null>(null);
   const [lastRecordingUrl, setLastRecordingUrl] = useState<string | null>(null);
   const [listenSecondsLeft, setListenSecondsLeft] = useState<number | null>(null);
   const [listenProgress, setListenProgress] = useState(0);
@@ -1074,19 +1149,23 @@ export default function LearningApp({ page }: { page: LearningPage }) {
     setPronunciationPhase("listening");
     setPronunciationHeard("");
     setPronunciationMatch(null);
+    setPronunciationKind(null);
+    lastLetterKindRef.current = null;
     setListenProgress(0);
     setListenSecondsLeft(Math.ceil(WORD_LISTEN.maxMs / 1000));
     const sessionConfig: VoiceSessionConfig = {
       minMs: WORD_LISTEN.minMs,
       maxMs: WORD_LISTEN.maxMs,
       successThreshold: WORD_LISTEN.threshold,
+      // ثلاث مسارات مقبولة: صوت الحرف ("آه") / اسم الحرف ("إي") / كلمة المثال (apple).
+      // الطفل كان يفشل وهو ينطق الصوت نفسه الذي يعلمه التطبيق — لهذا نجح تمرين
+      // الكلمات بينما فشل تمرين الحروف. يعمل تلقائيًا مع مسار إنقاذ Whisper أيضًا.
       evaluate: (candidates) => {
-        let best: VoiceSessionDecision = { match: 0, transcript: "" };
-        candidates.forEach((candidate) => {
-          const match = wordSimilarity(candidate, activeLetter.word);
-          if (match > best.match) best = { match, transcript: candidate };
-        });
-        return best;
+        const best = matchLetterUtterances(candidates, activeLetter);
+        const transcript = candidates[0] ?? "";
+        if (!best) return { match: 0, transcript };
+        lastLetterKindRef.current = best.kind;
+        return { match: best.score, transcript };
       },
       onStartListening: () => {
         setIsChildSpeaking(true);
@@ -1100,18 +1179,29 @@ export default function LearningApp({ page }: { page: LearningPage }) {
         if (decision.transcript) setPronunciationHeard(decision.transcript);
       },
       onSuccess: (decision) => {
+        const kind = lastLetterKindRef.current;
+        setPronunciationKind(kind);
         setPronunciationHeard(decision.transcript || activeLetter.word);
         setPronunciationMatch(decision.match);
         setPronunciationPhase("success");
-        setPronunciationFeedback(`صح! أحسنت، قلت كلمة ${activeLetter.word} بشكل صحيح.`);
-        giveReward(1, `أحسنت! سمعنا كلمة ${activeLetter.word} بوضوح.`, "speech");
+        if (kind === "sound") {
+          setPronunciationFeedback(`صح! ده بالظبط صوت حرف ${activeLetter.letter} — "${activeLetter.sound}".`);
+          giveReward(1, `ممتاز! قلت صوت حرف ${activeLetter.letter} بشكل مثالي.`, "speech");
+        } else if (kind === "name") {
+          setPronunciationFeedback(`صح! قلت اسم الحرف ${activeLetter.letter}. جرّب كمان تقول صوته: "${activeLetter.sound}".`);
+          giveReward(1, `أحسنت! قلت اسم حرف ${activeLetter.letter}.`, "speech");
+        } else {
+          setPronunciationFeedback(`صح! أحسنت، قلت كلمة ${activeLetter.word} بشكل صحيح.`);
+          giveReward(1, `أحسنت! سمعنا كلمة ${activeLetter.word} بوضوح.`, "speech");
+        }
       },
       onFail: (decision, reason) => {
         setPronunciationHeard(decision.transcript);
         setPronunciationMatch(decision.match > 0 ? decision.match : null);
+        setPronunciationKind(null);
         setWrongPulse(Date.now());
-        if (reason === "quiet") showPronunciationRetry("لم نسمع صوتك. قرّب من الميكروفون وقُل الكلمة ببطء.");
-        else showPronunciationRetry(decision.match >= 0.55 ? "قريب جدًا! جرّب أن تقول الكلمة ببطء أكثر." : "لم تطابق الكلمة بعد.");
+        if (reason === "quiet") showPronunciationRetry("لم نسمع صوتك. قرّب من الميكروفون وقُل صوت الحرف ببطء.");
+        else showPronunciationRetry(decision.match >= 0.55 ? "قريب جدًا! جرّب أن تقول صوت الحرف ببطء أكثر." : "لم نتعرف على صوت الحرف بعد. اسمع المثال ثم قل صوته أو كلمة المثال.");
       },
       onDenied: () => {
         setPronunciationPhase("unavailable");
@@ -1126,11 +1216,10 @@ export default function LearningApp({ page }: { page: LearningPage }) {
         setPronunciationFeedback("محتاجين تنزيل «محرك التعرف الذكي» أول مرة فقط (يحتاج إنترنت). فعّله من زر المحرك بالأعلى ثم جرّب مرة أخرى.");
       },
     };
-    // Professional engine first (accurate cloud judging, zero downloads);
-    // free browser engine as the default path for everyone else.
-    if (!startProAssessment(sessionConfig, activeLetter.word, SERVER_WORD)) {
-      runVoiceSession(sessionConfig);
-    }
+    // تمرين الحروف يمشي على محرك المتصفح المجاني مباشرة: صوت الحرف المفرد ليس
+    // كلمة، ولا Groq/Azure السحابي ولا Whisper يمكنهما تقييمه مقابل كلمة المثال.
+    // المطابقة الثلاثية أعلاه + إنقاذ Whisper المحلي تغطيان كل الحالات بدون شبكة.
+    runVoiceSession(sessionConfig);
   };
 
   const playSentencePracticeModel = (sentence: SentenceLesson) => {
@@ -1401,18 +1490,18 @@ export default function LearningApp({ page }: { page: LearningPage }) {
                     </div>
                     <div className="repeat-line"><span className="repeat-dots"><i /><i /><i /></span><span>جرّب أن تقولها: <b>{activeLetter.letter} — {activeLetter.word}</b></span></div>
                     <div className={cn("pronunciation-card", `phase-${pronunciationPhase}`)}>
-                      <div className="pronunciation-copy"><span className="mic-sticker"><Mic size={15} /></span><div><b>قلها وخلّيني أصحح لك</b><small>اسمع كلمة <em lang="en">{activeLetter.word}</em>، ثم قلها في الميكروفون</small></div></div>
+                      <div className="pronunciation-copy"><span className="mic-sticker"><Mic size={15} /></span><div><b>قلها وخلّيني أصحح لك</b><small>قول صوت الحرف <em lang="en">{activeLetter.sound}</em> أو اسمه أو كلمة <em lang="en">{activeLetter.word}</em> — أي واحدة فيهم صح</small></div></div>
                       <div className="direct-pronunciation-flow"><span className={cn(hasHeardModel && "done")}><i>1</i><Volume2 size={13} /> اسمع الكلمة</span><span className={cn(isChildSpeaking && "current")}><i>2</i><Mic size={13} /> قلها</span></div>
                       <div className="pronunciation-actions"><button className="hear-model-button" onClick={playPracticeModel}><Volume2 size={15} /> اسمع الكلمة</button><button className={cn("pronunciation-button", isChildSpeaking && "listening")} onClick={startPronunciationCheck} disabled={isChildSpeaking}><Mic size={16} /> {isChildSpeaking ? "نستمع…" : "قلها الآن"}</button></div>
                       {engineBanner}
                       {!speechRecognitionSupported && <span className="speech-support-note">{speechRecognitionSupported === null ? "تجهيز الميكروفون…" : "نستخدم التعرف الذكي داخل جهازك في هذا المتصفح"}</span>}
                       {pronunciationPhase === "listening" && <div className="listen-meter" aria-hidden="true"><span className="listen-meter-fill" style={{ width: `${listenProgress}%` }} /><small>{listenSecondsLeft !== null ? listenSecondsLabel(listenSecondsLeft) : "نفتح الميكروفون…"}</small></div>}
                       {pronunciationPhase === "review" && <div className="review-meter"><Sparkles size={13} /> بنراجع تسجيلك بدقة أعلى…</div>}
-                      {pronunciationPhase === "success" && <div className="pronunciation-result correct"><Check size={18} /><div><b>صح! أحسنت</b><span>نطقت <em lang="en">{activeLetter.word}</em> بشكل صحيح</span></div></div>}
+                      {pronunciationPhase === "success" && <div className="pronunciation-result correct"><Check size={18} /><div><b>صح! أحسنت</b><span>{pronunciationKind === "sound" ? <>قلت صوت حرف <em lang="en">{activeLetter.letter}</em> بشكل مثالي</> : pronunciationKind === "name" ? <>قلت اسم الحرف — جرّب صوته <em lang="en">{activeLetter.sound}</em> كمان</> : <>نطقت <em lang="en">{activeLetter.word}</em> بشكل صحيح</>}</span></div></div>}
                       {pronunciationPhase === "retry" && <div className="pronunciation-result retry"><X size={18} /><div><b>حاول مرة أخرى</b><span>اسمع الكلمة ثم قلها ببطء</span></div></div>}
-                      {pronunciationHeard && <div className={cn("speech-heard", pronunciationPhase === "success" && "clear")}><span>سمعنا:</span><b lang="en">{pronunciationHeard}</b>{pronunciationMatch !== null && <small className="score-chip">{Math.round(pronunciationMatch * 100)}٪ · {pronunciationMatch >= .8 ? "واضحة جدًا" : pronunciationMatch >= .55 ? "قريبة من الكلمة" : "جرّب ببطء أكثر"}</small>}</div>}
+                      {pronunciationHeard && <div className={cn("speech-heard", pronunciationPhase === "success" && "clear")}><span>سمعنا:</span><b lang="en">{pronunciationHeard}</b>{pronunciationMatch !== null && <small className="score-chip">{Math.round(pronunciationMatch * 100)}٪ · {pronunciationMatch >= 0.8 ? "واضحة جدًا" : pronunciationMatch >= 0.55 ? "قريبة" : "جرّب ببطء أكثر"}</small>}</div>}
                       {lastRecordingUrl && pronunciationPhase !== "listening" && pronunciationPhase !== "review" && <div className="recording-review"><button className="playback-button" onClick={playChildRecording}><Volume2 size={14} /> اسمع صوتك</button><small>التسجيل في الذاكرة فقط ولا يُحفظ</small></div>}
-                      {pronunciationPhase === "retry" && <div className="pronunciation-hint"><span className="hint-letter" lang="en">{activeLetter.letter}</span><div><b>تلميح</b><p>الكلمة هي: <strong lang="en">{activeLetter.word}</strong></p><small>ابدأ بصوت <em>{activeLetter.hint}</em>.</small></div></div>}
+                      {pronunciationPhase === "retry" && <div className="pronunciation-hint"><span className="hint-letter" lang="en">{activeLetter.letter}</span><div><b>تلميح</b><p>قول صوت الحرف: <strong lang="en">{activeLetter.sound}</strong> — أو كلمة <strong lang="en">{activeLetter.word}</strong></p><small>ابدأ بصوت <em>{activeLetter.hint}</em> زي ما سمعته.</small></div></div>}
                       {pronunciationFeedback && (pronunciationPhase === "unavailable" || pronunciationPhase === "retry") && <p className="pronunciation-feedback">{pronunciationFeedback}</p>}
                       {pronunciationAttempts > 0 && pronunciationPhase === "retry" && <span className="attempt-badge">محاولة {pronunciationAttempts} · أنت تتعلم بشكل ممتاز</span>}
                       <p className="mic-privacy">اطلب مساعدة ولي الأمر. {proEngineStatus === "ready" ? "عند تفعيل المحرك الاحترافي يُرسل الصوت لخدمة تقييم سحابية لتحليله لحظيًا فقط ولا يُخزَّن." : "صوتك يُقيَّم لحظيًا ولا يُرسل أو يُخزَّن في أي مكان."}</p>
