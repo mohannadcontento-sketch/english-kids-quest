@@ -203,7 +203,23 @@ function vitePluginStorageProxy(): Plugin {
   };
 }
 
-const plugins = [react(), tailwindcss(), jsxLocPlugin(), vitePluginManusRuntime(), vitePluginManusDebugCollector(), vitePluginStorageProxy()];
+/**
+ * onnxruntime-web ships a large WebGPU-capable binary (ort-wasm-simd-threaded.jsep.wasm).
+ * Transformers.js loads its WASM backends from the official jsDelivr CDN instead, so
+ * the locally emitted copy would be ~21MB of dead weight in the deployment — drop it.
+ */
+function dropBundledOrtWasm(): Plugin {
+  return {
+    name: "drop-bundled-ort-wasm",
+    generateBundle(_options, bundle) {
+      for (const fileName of Object.keys(bundle)) {
+        if (fileName.includes("ort-wasm-") && fileName.endsWith(".wasm")) delete bundle[fileName];
+      }
+    },
+  };
+}
+
+const plugins = [react(), tailwindcss(), jsxLocPlugin(), vitePluginManusRuntime(), vitePluginManusDebugCollector(), vitePluginStorageProxy(), dropBundledOrtWasm()];
 
 export default defineConfig({
   plugins,

@@ -31,12 +31,13 @@ import {
 import { cn } from "@/lib/utils";
 import { withBase, withAssetV } from "@/lib/base";
 import { getEmbeddedAudioCue, type AudioCue } from "@/lib/embeddedAudio";
+import { isSmartEngineReady, loadSmartEngine, transcribeRecording } from "@/lib/whisperEngine";
 import { Link, useLocation } from "wouter";
 
 type Mode = "letters" | "sentences";
 type SentenceCategory = "الكل" | "التحية" | "اللباقة" | "البيت" | "المشاعر" | "اللعب" | "التعلّم";
 type GameMode = "listen" | "match" | "sentence";
-type PronunciationPhase = "ready" | "listening" | "retry" | "success" | "unavailable";
+type PronunciationPhase = "ready" | "listening" | "review" | "retry" | "success" | "unavailable";
 type CelebrationTheme = "quiz" | "speech" | GameMode;
 type LearningPage = "letters" | "sentences" | "games" | "progress";
 type SpeechRecognitionResultLike = { transcript: string; confidence?: number };
@@ -69,6 +70,10 @@ type VoiceSessionConfig = {
   onSuccess: (decision: VoiceSessionDecision) => void;
   onFail: (decision: VoiceSessionDecision, reason: VoiceSessionFailReason) => void;
   onDenied: () => void;
+  /** Called before a Whisper double-check of the recorded audio (may take a moment). */
+  onRescueStart?: () => void;
+  /** Called when no Web Speech API exists and the smart engine could not be prepared. */
+  onEngineMissing?: () => void;
 };
 
 type LetterLesson = {
@@ -344,10 +349,15 @@ export default function LearningApp({ page }: { page: LearningPage }) {
   const recognitionRef = useRef<SpeechRecognitionLike | null>(null);
   const recorderRef = useRef<MediaRecorder | null>(null);
   const recordingUrlRef = useRef<string | null>(null);
+  const recordingBlobRef = useRef<Blob | null>(null);
+  const recordingStopResolveRef = useRef<((blob: Blob | null) => void) | null>(null);
+  const smartEngineLoadRef = useRef<Promise<boolean> | null>(null);
   const sessionCleanupRef = useRef<(() => void) | null>(null);
   const [lastRecordingUrl, setLastRecordingUrl] = useState<string | null>(null);
   const [listenSecondsLeft, setListenSecondsLeft] = useState<number | null>(null);
   const [listenProgress, setListenProgress] = useState(0);
+  const [smartEngineStatus, setSmartEngineStatus] = useState<"idle" | "loading" | "ready" | "error">("idle");
+  const [smartEngineProgress, setSmartEngineProgress] = useState(0);
 
   const activeLetter = letters[activeLetterIndex];
   const filteredSentences = useMemo(() => {
@@ -415,6 +425,23 @@ export default function LearningApp({ page }: { page: LearningPage }) {
   useEffect(() => {
     const browserWindow = window as Window & { SpeechRecognition?: SpeechRecognitionConstructor; webkitSpeechRecognition?: SpeechRecognitionConstructor };
     setSpeechRecognitionSupported(Boolean(browserWindow.SpeechRecognition ?? browserWindow.webkitSpeechRecognition));
+  }, []);
+
+  // If the smart engine was enabled before, warm it up silently on open —
+  // the model is already cached by the browser, so this is instant.
+  useEffect(() => {
+    try {
+      if (localStorage.getItem("ekq-smart-engine") !== "ready") return;
+    } catch {
+      return;
+    }
+    if (isSmartEngineReady()) {
+      setSmartEngineStatus("ready");
+      return;
+    }
+    setSmartEngineStatus("loading");
+    void ensureSmartEngine();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const playEmbeddedAudio = (cue: AudioCue | null) => {
@@ -546,26 +573,79 @@ export default function LearningApp({ page }: { page: LearningPage }) {
     playEmbeddedAudio(getEmbeddedAudioCue("word", activeLetterIndex));
   };
 
+  const ensureSmartEngine = () => {
+    if (isSmartEngineReady()) {
+      setSmartEngineStatus("ready");
+      return Promise.resolve(true);
+    }
+    if (smartEngineLoadRef.current) return smartEngineLoadRef.current;
+    setSmartEngineStatus("loading");
+    setSmartEngineProgress(0);
+    const promise = loadSmartEngine((percent) => setSmartEngineProgress(percent))
+      .then((ready) => {
+        if (ready) {
+          setSmartEngineStatus("ready");
+          setSmartEngineProgress(100);
+          try { localStorage.setItem("ekq-smart-engine", "ready"); } catch { /* private mode */ }
+        } else {
+          setSmartEngineStatus("error");
+          smartEngineLoadRef.current = null;
+        }
+        return ready;
+      })
+      .catch(() => {
+        setSmartEngineStatus("error");
+        smartEngineLoadRef.current = null;
+        return false;
+      });
+    smartEngineLoadRef.current = promise;
+    return promise;
+  };
+
+  const enableSmartEngine = () => {
+    void ensureSmartEngine();
+  };
+
+  // Smart-engine banner: opt-in one-time download (~45MB), then fully offline.
+  const engineBanner = smartEngineStatus === "ready" ? (
+    <div className="engine-banner ready"><Sparkles size={13} /> التعرف الذكي جاهز — يقيّم نطق الطفل داخل الجهاز حتى بدون إنترنت</div>
+  ) : smartEngineStatus === "loading" ? (
+    <div className="engine-banner"><span>جاري تنزيل محرك التعرف الذكي… {Math.round(smartEngineProgress)}٪</span><div className="engine-progress"><span style={{ width: `${smartEngineProgress}%` }} /></div><small>مرة واحدة فقط (~45 م.ب) — بعد ذلك يعمل بدون إنترنت</small></div>
+  ) : (
+    <button className="engine-banner enable" onClick={enableSmartEngine}><Sparkles size={13} /> {smartEngineStatus === "error" ? "تعذر تنزيل المحرك الذكي — اضغط للمحاولة مرة أخرى" : "فعّل التعرف الذكي: دقة أعلى في تقييم النطق (تنزيل مرة واحدة ~45 م.ب)"}</button>
+  );
+
   const startVoiceRecording = () => new Promise<boolean>((resolve) => {
     try {
       if (!navigator.mediaDevices?.getUserMedia || typeof MediaRecorder === "undefined") {
         resolve(false);
         return;
       }
-      navigator.mediaDevices.getUserMedia({ audio: true }).then((stream) => {
+      // Browser audio processing ON: kids practice in real homes, not studios.
+      navigator.mediaDevices.getUserMedia({
+        audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true },
+      }).then((stream) => {
         try {
           const chunks: Blob[] = [];
           const recorder = new MediaRecorder(stream);
           recorder.ondataavailable = (event) => { if (event.data.size > 0) chunks.push(event.data); };
+          recordingBlobRef.current = null;
           recorder.onstop = () => {
             stream.getTracks().forEach((track) => track.stop());
-            if (chunks.length === 0) return;
-            const blob = new Blob(chunks, { type: recorder.mimeType || "audio/webm" });
-            if (!blob.size) return;
-            if (recordingUrlRef.current) URL.revokeObjectURL(recordingUrlRef.current);
-            const url = URL.createObjectURL(blob);
-            recordingUrlRef.current = url;
-            setLastRecordingUrl(url);
+            let blob: Blob | null = null;
+            if (chunks.length > 0) {
+              const built = new Blob(chunks, { type: recorder.mimeType || "audio/webm" });
+              if (built.size) {
+                blob = built;
+                recordingBlobRef.current = built;
+                if (recordingUrlRef.current) URL.revokeObjectURL(recordingUrlRef.current);
+                const url = URL.createObjectURL(built);
+                recordingUrlRef.current = url;
+                setLastRecordingUrl(url);
+              }
+            }
+            recordingStopResolveRef.current?.(blob);
+            recordingStopResolveRef.current = null;
           };
           recorderRef.current = recorder;
           recorder.start();
@@ -581,11 +661,22 @@ export default function LearningApp({ page }: { page: LearningPage }) {
     }
   });
 
-  const stopVoiceRecording = () => {
+  /** Stop the recorder and resolve with the complete recording blob (null if none). */
+  const stopVoiceRecording = () => new Promise<Blob | null>((resolve) => {
     const recorder = recorderRef.current;
-    if (recorder && recorder.state === "recording") recorder.stop();
     recorderRef.current = null;
-  };
+    if (!recorder || recorder.state !== "recording") {
+      resolve(recordingBlobRef.current);
+      return;
+    }
+    recordingStopResolveRef.current = resolve;
+    try {
+      recorder.stop();
+    } catch {
+      recordingStopResolveRef.current = null;
+      resolve(recordingBlobRef.current);
+    }
+  });
 
   const playChildRecording = () => {
     if (!lastRecordingUrl) return;
@@ -593,6 +684,69 @@ export default function LearningApp({ page }: { page: LearningPage }) {
     const audio = new Audio(lastRecordingUrl);
     audioRef.current = audio;
     audio.play().catch(() => undefined);
+  };
+
+  /**
+   * Recording-only session for browsers without the Web Speech API
+   * (Firefox, iOS Safari): capture the child's voice for the full window,
+   * then let the smart engine (Whisper, on-device) judge it.
+   */
+  const runRecordingOnlySession = async (config: VoiceSessionConfig) => {
+    const engineReady = await ensureSmartEngine();
+    if (!engineReady) {
+      config.onEngineMissing?.();
+      return;
+    }
+    audioRef.current?.pause();
+    recognitionRef.current?.abort();
+    setIsChildSpeaking(true);
+    const startedAt = Date.now();
+    const stopAt = startedAt + config.maxMs;
+    let disposed = false;
+    sessionCleanupRef.current = () => { disposed = true; };
+    const started = await startVoiceRecording();
+    if (disposed) {
+      await stopVoiceRecording();
+      return;
+    }
+    if (!started) {
+      config.onDenied();
+      return;
+    }
+    config.onStartListening();
+    await new Promise<void>((resolve) => {
+      const intervalId = window.setInterval(() => {
+        if (disposed) {
+          window.clearInterval(intervalId);
+          resolve();
+          return;
+        }
+        const secondsLeft = Math.max(0, Math.ceil((stopAt - Date.now()) / 1000));
+        config.onTick(secondsLeft, Math.min(100, ((Date.now() - startedAt) / config.maxMs) * 100));
+        if (Date.now() >= stopAt) {
+          window.clearInterval(intervalId);
+          resolve();
+        }
+      }, 200);
+    });
+    if (disposed) {
+      await stopVoiceRecording();
+      setIsChildSpeaking(false);
+      setListenSecondsLeft(null);
+      return;
+    }
+    sessionCleanupRef.current = null;
+    setIsChildSpeaking(false);
+    setListenSecondsLeft(null);
+    config.onRescueStart?.();
+    const blob = await stopVoiceRecording();
+    let decision: VoiceSessionDecision = { match: 0, transcript: "" };
+    if (blob && blob.size) {
+      const transcript = await transcribeRecording(blob);
+      if (transcript) decision = config.evaluate([transcript]);
+    }
+    if (decision.match >= config.successThreshold) config.onSuccess(decision);
+    else config.onFail(decision, decision.transcript ? "mismatch" : "quiet");
   };
 
   /**
@@ -607,7 +761,7 @@ export default function LearningApp({ page }: { page: LearningPage }) {
     const browserWindow = window as Window & { SpeechRecognition?: SpeechRecognitionConstructor; webkitSpeechRecognition?: SpeechRecognitionConstructor };
     const Recognition = browserWindow.SpeechRecognition ?? browserWindow.webkitSpeechRecognition;
     if (!Recognition) {
-      config.onDenied();
+      await runRecordingOnlySession(config);
       return;
     }
     audioRef.current?.pause();
@@ -647,19 +801,37 @@ export default function LearningApp({ page }: { page: LearningPage }) {
       graceTimer = null;
     };
 
-    const finish = (reason: "success" | "quiet" | "mismatch" | "denied") => {
+    const finish = async (reason: "success" | "quiet" | "mismatch" | "denied") => {
       if (evaluated) return;
       evaluated = true;
       sessionCleanupRef.current = null;
       cleanupTimers();
       try { recognition.stop(); } catch { /* already stopped */ }
-      stopVoiceRecording();
+      const decision = bestNow();
+      if (reason === "success" || reason === "denied") {
+        await stopVoiceRecording();
+        setIsChildSpeaking(false);
+        setListenSecondsLeft(null);
+        if (reason === "success") config.onSuccess(decision);
+        else config.onDenied();
+        return;
+      }
+      // Weak transcript: give the recorded audio a second opinion from the
+      // smart engine (Whisper runs on-device) before disappointing the child.
+      const blob = await stopVoiceRecording();
       setIsChildSpeaking(false);
       setListenSecondsLeft(null);
-      const decision = bestNow();
-      if (reason === "success") config.onSuccess(decision);
-      else if (reason === "denied") config.onDenied();
-      else config.onFail(decision, reason);
+      let finalDecision = decision;
+      if (isSmartEngineReady() && blob && blob.size > 0) {
+        config.onRescueStart?.();
+        const transcript = await transcribeRecording(blob);
+        if (transcript) {
+          const rescued = config.evaluate([transcript]);
+          if (rescued.match > finalDecision.match) finalDecision = rescued;
+        }
+      }
+      if (finalDecision.match >= config.successThreshold) config.onSuccess(finalDecision);
+      else config.onFail(finalDecision, reason);
     };
 
     const recognition = new Recognition();
@@ -758,13 +930,6 @@ export default function LearningApp({ page }: { page: LearningPage }) {
   };
 
   const startPronunciationCheck = () => {
-    const browserWindow = window as Window & { SpeechRecognition?: SpeechRecognitionConstructor; webkitSpeechRecognition?: SpeechRecognitionConstructor };
-    const Recognition = browserWindow.SpeechRecognition ?? browserWindow.webkitSpeechRecognition;
-    if (!Recognition) {
-      setPronunciationPhase("unavailable");
-      setPronunciationFeedback("هذا التدريب يعمل في Chrome أو Edge على جهاز يدعم الميكروفون.");
-      return;
-    }
     setPronunciationPhase("listening");
     setPronunciationHeard("");
     setPronunciationMatch(null);
@@ -811,6 +976,14 @@ export default function LearningApp({ page }: { page: LearningPage }) {
         setPronunciationPhase("unavailable");
         setPronunciationFeedback("اسمح للميكروفون من إعدادات المتصفح ثم جرّب.");
       },
+      onRescueStart: () => {
+        setPronunciationPhase("review");
+        setPronunciationFeedback("جاري مراجعة تسجيلك بدقة أعلى… لحظة.");
+      },
+      onEngineMissing: () => {
+        setPronunciationPhase("unavailable");
+        setPronunciationFeedback("محتاجين تنزيل «محرك التعرف الذكي» أول مرة فقط (يحتاج إنترنت). فعّله من زر المحرك بالأعلى ثم جرّب مرة أخرى.");
+      },
     });
   };
 
@@ -820,12 +993,6 @@ export default function LearningApp({ page }: { page: LearningPage }) {
   };
 
   const startSentencePronunciationCheck = (sentence: SentenceLesson) => {
-    const browserWindow = window as Window & { SpeechRecognition?: SpeechRecognitionConstructor; webkitSpeechRecognition?: SpeechRecognitionConstructor };
-    const Recognition = browserWindow.SpeechRecognition ?? browserWindow.webkitSpeechRecognition;
-    if (!Recognition) {
-      updateSentencePractice(sentence.id, { phase: "unavailable", feedback: "هذا التدريب يعمل في Chrome أو Edge على جهاز يدعم الميكروفون." });
-      return;
-    }
     updateSentencePractice(sentence.id, { phase: "listening", feedback: "جهّز نفسك… نفتح الميكروفون.", heard: "", match: null });
     setListenProgress(0);
     setListenSecondsLeft(Math.ceil(SENTENCE_LISTEN.maxMs / 1000));
@@ -867,6 +1034,12 @@ export default function LearningApp({ page }: { page: LearningPage }) {
       },
       onDenied: () => {
         updateSentencePractice(sentence.id, { phase: "unavailable", feedback: "اسمح للميكروفون من إعدادات المتصفح ثم جرّب." });
+      },
+      onRescueStart: () => {
+        updateSentencePractice(sentence.id, { phase: "review", feedback: "جاري مراجعة تسجيلك بدقة أعلى… لحظة.", heard: "", match: null });
+      },
+      onEngineMissing: () => {
+        updateSentencePractice(sentence.id, { phase: "unavailable", feedback: "محتاجين تنزيل «محرك التعرف الذكي» أول مرة فقط (يحتاج إنترنت). فعّله من زر المحرك أعلى قائمة الجمل ثم جرّب." });
       },
     });
   };
@@ -1081,12 +1254,15 @@ export default function LearningApp({ page }: { page: LearningPage }) {
                     <div className={cn("pronunciation-card", `phase-${pronunciationPhase}`)}>
                       <div className="pronunciation-copy"><span className="mic-sticker"><Mic size={15} /></span><div><b>قلها وخلّيني أصحح لك</b><small>اسمع كلمة <em lang="en">{activeLetter.word}</em>، ثم قلها في الميكروفون</small></div></div>
                       <div className="direct-pronunciation-flow"><span className={cn(hasHeardModel && "done")}><i>1</i><Volume2 size={13} /> اسمع الكلمة</span><span className={cn(isChildSpeaking && "current")}><i>2</i><Mic size={13} /> قلها</span></div>
-                      {speechRecognitionSupported ? <div className="pronunciation-actions"><button className="hear-model-button" onClick={playPracticeModel}><Volume2 size={15} /> اسمع الكلمة</button><button className={cn("pronunciation-button", isChildSpeaking && "listening")} onClick={startPronunciationCheck} disabled={isChildSpeaking}><Mic size={16} /> {isChildSpeaking ? "نستمع…" : "قلها الآن"}</button></div> : <span className="speech-support-note">{speechRecognitionSupported === null ? "تجهيز الميكروفون…" : "متاح في Chrome وEdge"}</span>}
+                      <div className="pronunciation-actions"><button className="hear-model-button" onClick={playPracticeModel}><Volume2 size={15} /> اسمع الكلمة</button><button className={cn("pronunciation-button", isChildSpeaking && "listening")} onClick={startPronunciationCheck} disabled={isChildSpeaking}><Mic size={16} /> {isChildSpeaking ? "نستمع…" : "قلها الآن"}</button></div>
+                      {engineBanner}
+                      {!speechRecognitionSupported && <span className="speech-support-note">{speechRecognitionSupported === null ? "تجهيز الميكروفون…" : "نستخدم التعرف الذكي داخل جهازك في هذا المتصفح"}</span>}
                       {pronunciationPhase === "listening" && <div className="listen-meter" aria-hidden="true"><span className="listen-meter-fill" style={{ width: `${listenProgress}%` }} /><small>{listenSecondsLeft !== null ? listenSecondsLabel(listenSecondsLeft) : "نفتح الميكروفون…"}</small></div>}
+                      {pronunciationPhase === "review" && <div className="review-meter"><Sparkles size={13} /> بنراجع تسجيلك بدقة أعلى…</div>}
                       {pronunciationPhase === "success" && <div className="pronunciation-result correct"><Check size={18} /><div><b>صح! أحسنت</b><span>نطقت <em lang="en">{activeLetter.word}</em> بشكل صحيح</span></div></div>}
                       {pronunciationPhase === "retry" && <div className="pronunciation-result retry"><X size={18} /><div><b>حاول مرة أخرى</b><span>اسمع الكلمة ثم قلها ببطء</span></div></div>}
                       {pronunciationHeard && <div className={cn("speech-heard", pronunciationPhase === "success" && "clear")}><span>سمعنا:</span><b lang="en">{pronunciationHeard}</b>{pronunciationMatch !== null && <small className="score-chip">{Math.round(pronunciationMatch * 100)}٪ · {pronunciationMatch >= .8 ? "واضحة جدًا" : pronunciationMatch >= .55 ? "قريبة من الكلمة" : "جرّب ببطء أكثر"}</small>}</div>}
-                      {lastRecordingUrl && pronunciationPhase !== "listening" && <div className="recording-review"><button className="playback-button" onClick={playChildRecording}><Volume2 size={14} /> اسمع صوتك</button><small>التسجيل في الذاكرة فقط ولا يُحفظ</small></div>}
+                      {lastRecordingUrl && pronunciationPhase !== "listening" && pronunciationPhase !== "review" && <div className="recording-review"><button className="playback-button" onClick={playChildRecording}><Volume2 size={14} /> اسمع صوتك</button><small>التسجيل في الذاكرة فقط ولا يُحفظ</small></div>}
                       {pronunciationPhase === "retry" && <div className="pronunciation-hint"><span className="hint-letter" lang="en">{activeLetter.letter}</span><div><b>تلميح</b><p>الكلمة هي: <strong lang="en">{activeLetter.word}</strong></p><small>ابدأ بصوت <em>{activeLetter.hint}</em>.</small></div></div>}
                       {pronunciationFeedback && (pronunciationPhase === "unavailable" || pronunciationPhase === "retry") && <p className="pronunciation-feedback">{pronunciationFeedback}</p>}
                       {pronunciationAttempts > 0 && pronunciationPhase === "retry" && <span className="attempt-badge">محاولة {pronunciationAttempts} · أنت تتعلم بشكل ممتاز</span>}
@@ -1132,6 +1308,7 @@ export default function LearningApp({ page }: { page: LearningPage }) {
                   </div>
                   <label className="sentence-search"><Search size={16} /><input value={sentenceSearch} onChange={(event) => { setSentenceSearch(event.target.value); setSentencePage(1); }} placeholder="ابحث عن جملة..." aria-label="البحث في الجمل" /></label>
                 </div>
+                {engineBanner}
                 <div className="sentences-grid">
                   {visibleSentences.map((sentence) => {
                     const isDone = completedSentences.has(sentence.id);
@@ -1139,9 +1316,9 @@ export default function LearningApp({ page }: { page: LearningPage }) {
                       <div className="sentence-top"><span className="sentence-number">{String(sentence.id).padStart(2, "0")}</span><span className="sentence-category">{sentence.category}</span></div>
                       <p className="sentence-english" lang="en">{sentence.english}</p>
                       <p className="sentence-arabic">{sentence.arabic}</p>
-                      <div className="sentence-actions"><button className={cn("sentence-play", isSpeaking && "speaking")} onClick={() => playSentencePracticeModel(sentence)} aria-label={`استمع إلى ${sentence.english}`}><Volume2 size={17} /> اسمع</button>{speechRecognitionSupported && <button className={cn("sentence-mic", sentencePractice.id === sentence.id && sentencePractice.phase === "listening" && "listening")} onClick={() => startSentencePronunciationCheck(sentence)} disabled={isChildSpeaking} aria-label={`قل الجملة ${sentence.english}`}><Mic size={16} /> {sentencePractice.id === sentence.id && sentencePractice.phase === "listening" ? "نسمع" : "قلها"}</button>}<button className={cn("bookmark-button", isDone && "saved")} onClick={() => toggleSentenceComplete(sentence.id)} aria-label={isDone ? "إلغاء حفظ الجملة" : "حفظ الجملة"}>{isDone ? <Check size={17} /> : <Bookmark size={17} />}</button></div>
-                      {sentencePractice.id === sentence.id && sentencePractice.feedback && <div className={cn("sentence-practice-feedback", `phase-${sentencePractice.phase}`)} aria-live="polite"><span>{sentencePractice.phase === "success" ? <Check size={13} /> : sentencePractice.phase === "retry" ? <X size={13} /> : <Mic size={13} />}</span><div><b>{sentencePractice.phase === "success" ? "صح! أحسنت" : sentencePractice.phase === "retry" ? "حاول مرة أخرى" : sentencePractice.phase === "listening" ? "نستمع إليك" : "تدريب الجملة"}</b><p>{sentencePractice.feedback}</p>{sentencePractice.phase === "listening" && <div className="listen-meter" aria-hidden="true"><span className="listen-meter-fill" style={{ width: `${listenProgress}%` }} /><small>{listenSecondsLeft !== null ? listenSecondsLabel(listenSecondsLeft) : "نفتح الميكروفون…"}</small></div>}{sentencePractice.heard && <small>سمعنا: <em lang="en">{sentencePractice.heard}</em>{sentencePractice.match !== null && ` · ${Math.round(sentencePractice.match * 100)}٪ · ${sentencePractice.match >= .76 ? "واضحة جدًا" : sentencePractice.match >= .45 ? "قريبة من الجملة" : "قلها ببطء أكثر"}`}</small>}</div></div>}
-                      {sentencePractice.id === sentence.id && lastRecordingUrl && sentencePractice.phase !== "listening" && <div className="recording-review"><button className="playback-button" onClick={playChildRecording}><Volume2 size={14} /> اسمع صوتك</button><small>التسجيل في الذاكرة فقط ولا يُحفظ</small></div>}
+                      <div className="sentence-actions"><button className={cn("sentence-play", isSpeaking && "speaking")} onClick={() => playSentencePracticeModel(sentence)} aria-label={`استمع إلى ${sentence.english}`}><Volume2 size={17} /> اسمع</button><button className={cn("sentence-mic", sentencePractice.id === sentence.id && (sentencePractice.phase === "listening" || sentencePractice.phase === "review") && "listening")} onClick={() => startSentencePronunciationCheck(sentence)} disabled={isChildSpeaking} aria-label={`قل الجملة ${sentence.english}`}><Mic size={16} /> {sentencePractice.id === sentence.id && (sentencePractice.phase === "listening" || sentencePractice.phase === "review") ? "نسمع" : "قلها"}</button><button className={cn("bookmark-button", isDone && "saved")} onClick={() => toggleSentenceComplete(sentence.id)} aria-label={isDone ? "إلغاء حفظ الجملة" : "حفظ الجملة"}>{isDone ? <Check size={17} /> : <Bookmark size={17} />}</button></div>
+                      {sentencePractice.id === sentence.id && sentencePractice.feedback && <div className={cn("sentence-practice-feedback", `phase-${sentencePractice.phase}`)} aria-live="polite"><span>{sentencePractice.phase === "success" ? <Check size={13} /> : sentencePractice.phase === "retry" ? <X size={13} /> : <Mic size={13} />}</span><div><b>{sentencePractice.phase === "success" ? "صح! أحسنت" : sentencePractice.phase === "retry" ? "حاول مرة أخرى" : sentencePractice.phase === "listening" ? "نستمع إليك" : sentencePractice.phase === "review" ? "لحظة… بنراجع تسجيلك" : "تدريب الجملة"}</b><p>{sentencePractice.feedback}</p>{sentencePractice.phase === "listening" && <div className="listen-meter" aria-hidden="true"><span className="listen-meter-fill" style={{ width: `${listenProgress}%` }} /><small>{listenSecondsLeft !== null ? listenSecondsLabel(listenSecondsLeft) : "نفتح الميكروفون…"}</small></div>}{sentencePractice.phase === "review" && <div className="review-meter"><Sparkles size={12} /> بنراجع تسجيلك بدقة أعلى…</div>}{sentencePractice.heard && <small>سمعنا: <em lang="en">{sentencePractice.heard}</em>{sentencePractice.match !== null && ` · ${Math.round(sentencePractice.match * 100)}٪ · ${sentencePractice.match >= .76 ? "واضحة جدًا" : sentencePractice.match >= .45 ? "قريبة من الجملة" : "قلها ببطء أكثر"}`}</small>}</div></div>}
+                      {sentencePractice.id === sentence.id && lastRecordingUrl && sentencePractice.phase !== "listening" && sentencePractice.phase !== "review" && <div className="recording-review"><button className="playback-button" onClick={playChildRecording}><Volume2 size={14} /> اسمع صوتك</button><small>التسجيل في الذاكرة فقط ولا يُحفظ</small></div>}
                     </article>;
                   })}
                 </div>
