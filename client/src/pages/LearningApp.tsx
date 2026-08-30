@@ -195,6 +195,14 @@ const sentencePuzzles = [
 // Listening session timings: kids need enough time to breathe, start speaking, and repeat once.
 const WORD_LISTEN = { minMs: 2000, maxMs: 9000, threshold: 0.8 };
 const SENTENCE_LISTEN = { minMs: 3000, maxMs: 13000, threshold: 0.76 };
+/*
+  الحروف تحتاج عتبتها الخاصة: المطابقة الضبابية للصوت/الاسم (0.72/0.7) كانت أقل من
+  عتبة الكلمات 0.8 — أي أن المسارات الضبابية كانت معطلة أصلًا ولا يمكن أن تنجح.
+  العتبة 0.68 تجعل كل المسارات حية مع بقاء الإيجابيات الكاذبة شبه معدومة
+  (المطابقة الضبابية تتطلب تشابه ≥ 0.8 وطول ≥ حرفين).
+  مدة أطول (10 ثوانٍ): الطفل يسمع النموذج ثم يفكر ثم ينطق.
+*/
+const LETTER_LISTEN = { minMs: 2000, maxMs: 10000, threshold: 0.68 };
 // Cloud-engine pass thresholds mapped to 0-1. Kids' apps grade generously —
 // a clear attempt passes, mumbling does not. (Groq Whisper transcripts are
 // accurate; sentences allow partial word coverage.)
@@ -1152,11 +1160,11 @@ export default function LearningApp({ page }: { page: LearningPage }) {
     setPronunciationKind(null);
     lastLetterKindRef.current = null;
     setListenProgress(0);
-    setListenSecondsLeft(Math.ceil(WORD_LISTEN.maxMs / 1000));
+    setListenSecondsLeft(Math.ceil(LETTER_LISTEN.maxMs / 1000));
     const sessionConfig: VoiceSessionConfig = {
-      minMs: WORD_LISTEN.minMs,
-      maxMs: WORD_LISTEN.maxMs,
-      successThreshold: WORD_LISTEN.threshold,
+      minMs: LETTER_LISTEN.minMs,
+      maxMs: LETTER_LISTEN.maxMs,
+      successThreshold: LETTER_LISTEN.threshold,
       // ثلاث مسارات مقبولة: صوت الحرف ("آه") / اسم الحرف ("إي") / كلمة المثال (apple).
       // الطفل كان يفشل وهو ينطق الصوت نفسه الذي يعلمه التطبيق — لهذا نجح تمرين
       // الكلمات بينما فشل تمرين الحروف. يعمل تلقائيًا مع مسار إنقاذ Whisper أيضًا.
@@ -1201,7 +1209,7 @@ export default function LearningApp({ page }: { page: LearningPage }) {
         setPronunciationKind(null);
         setWrongPulse(Date.now());
         if (reason === "quiet") showPronunciationRetry("لم نسمع صوتك. قرّب من الميكروفون وقُل صوت الحرف ببطء.");
-        else showPronunciationRetry(decision.match >= 0.55 ? "قريب جدًا! جرّب أن تقول صوت الحرف ببطء أكثر." : "لم نتعرف على صوت الحرف بعد. اسمع المثال ثم قل صوته أو كلمة المثال.");
+        else showPronunciationRetry(decision.match >= 0.55 ? "قريب جدًا! جرّب مرة أخرى ببطء أكثر." : `جرّب تقول كلمة المثال «${activeLetter.word}» — أسهل حاجة الميكروفون بيفهمها.`);
       },
       onDenied: () => {
         setPronunciationPhase("unavailable");
@@ -1263,7 +1271,7 @@ export default function LearningApp({ page }: { page: LearningPage }) {
         setWrongPulse(Date.now());
         const attempts = (sentencePractice.id === sentence.id ? sentencePractice.attempts : 0) + 1;
         const message = reason === "quiet"
-          ? "لم نسمع جملة. قرّب من الميكروفون وجرّب مرة أخرى."
+          ? "لم نسمع جملتك. قرّب من الميكروفون وجرّب مرة أخرى."
           : decision.match >= 0.45 ? "قريب جدًا! اسمعها مرة أخرى وقل الكلمات ببطء." : "حاول مرة أخرى بعد سماع الجملة كاملة.";
         updateSentencePractice(sentence.id, { phase: "retry", heard: decision.transcript, match: decision.match > 0 ? decision.match : null, attempts, feedback: message });
       },
@@ -1392,7 +1400,7 @@ export default function LearningApp({ page }: { page: LearningPage }) {
 
       <main id="top">
         <section className="app-page-intro container">
-          <div><span className="section-number">مغامرة اليوم</span><h1>{page === "letters" ? "حديقة الحروف" : page === "sentences" ? "دفتر الجمل" : page === "games" ? "ساحة علوز للعب" : "تقدمي اليوم"}</h1><p>{page === "letters" ? "اسمع حرفًا واحدًا، قله، ثم العب به." : page === "sentences" ? "تدرّب على جمل صغيرة تستخدمها كل يوم." : page === "games" ? "اختر لعبة واحدة واستمتع بالمكافآت." : "انظر إلى النجوم وما أكملته في رحلتك."}</p></div>
+          <div><span className="section-number">مغامرة اليوم</span><h1>{page === "letters" ? "حديقة الحروف" : page === "sentences" ? "دفتر الجمل" : page === "games" ? "ساحة الألعاب" : "تقدمي اليوم"}</h1><p>{page === "letters" ? "اسمع حرفًا واحدًا، قله، ثم العب به." : page === "sentences" ? "تدرّب على جمل صغيرة تستخدمها كل يوم." : page === "games" ? "اختر لعبة واحدة واستمتع بالمكافآت." : "انظر إلى النجوم وما أكملته في رحلتك."}</p></div>
           <button className="back-home" onClick={() => setLocation("/")}><ArrowRight size={16} /> الرئيسية</button>
         </section>
 
@@ -1428,7 +1436,7 @@ export default function LearningApp({ page }: { page: LearningPage }) {
             </div>
             <div className="rail-tip">
               <img src={mascotImage} alt="" />
-              <div><b>نصيحة علوز</b><p>اسمع الكلمة مرتين، ثم قلها بصوتك.</p></div>
+              <div><b>نصيحة اليوم</b><p>اسمع الكلمة مرتين، ثم قلها بصوتك.</p></div>
             </div>
           </aside>
 
@@ -1570,7 +1578,7 @@ export default function LearningApp({ page }: { page: LearningPage }) {
 
             {page === "games" && <section className="game-zone" id="games">
               <div className="game-zone-heading">
-                <div><span className="section-number">03 / ألعاب قصيرة</span><h2>ساحة علوز للعب</h2><p>3 ألعاب صغيرة تجعل الحرف والكلمة والجملة جزءًا من مغامرة سريعة.</p></div>
+                <div><span className="section-number">03 / ألعاب قصيرة</span><h2>ساحة الألعاب</h2><p>3 ألعاب صغيرة تجعل الحرف والكلمة والجملة جزءًا من مغامرة سريعة.</p></div>
                 <div className={cn("game-score", celebrationKey > 0 && "rewarding")}><Trophy size={18} /><span><b key={celebrationKey}>{gameStars}</b><small>نجمة من الألعاب</small></span></div>
               </div>
               <div className="game-tabs" role="tablist" aria-label="اختيار لعبة">

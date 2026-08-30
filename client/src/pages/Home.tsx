@@ -24,7 +24,7 @@ export default function Home() {
         <Link className="landing-choice choice-games" href="/games"><span className="choice-icon"><Gamepad2 size={24} /></span><span><small>03 · مكافآت</small><b>ساحة الألعاب</b><p>3 ألعاب قصيرة ونجوم كثيرة.</p></span><ArrowLeft size={18} /></Link>
         <Link className="landing-choice choice-progress" href="/progress"><span className="choice-icon"><Star size={24} /></span><span><small>04 · رحلتي</small><b>لوحة التقدّم</b><p>شاهد نجومك وما أنجزته.</p></span><ArrowLeft size={18} /></Link>
       </section>
-      <section className="landing-note container"><Leaf size={19} /><span>نصيحة علوز: مهمة واحدة صغيرة أفضل من درس طويل.</span></section>
+      <section className="landing-note container"><Leaf size={19} /><span>نصيحة اليوم: مهمة واحدة صغيرة أفضل من درس طويل.</span></section>
     </main>
   </div>;
 }
