@@ -8,6 +8,6 @@ export const withBase = (path: string) => `${appBase}${path}`;
  * Bump this whenever an asset's CONTENT changes on the same filename,
  * so browsers that cached the old file (immutable or long max-age) fetch the new one.
  */
-export const ASSET_V = "20260830-human-audio";
+export const ASSET_V = "20260830-recording-v2";
 
 export const withAssetV = (path: string) => `${path}?v=${ASSET_V}`;
